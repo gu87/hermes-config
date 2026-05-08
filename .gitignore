@@ -1,0 +1,65 @@
+# Hermes local configuration repository
+#
+# Default deny: this directory contains secrets, browser profiles, databases,
+# logs, runtime state, caches, and generated artifacts. Only explicitly
+# allowlisted knowledge/configuration text files should be versioned.
+
+*
+
+# Git metadata for this local config repo
+!.gitignore
+!.gitattributes
+
+# Core identity / memory layer
+!SOUL.md
+!AGENTS.md
+!memories/
+!memories/*.md
+
+# Skill knowledge layer
+!skills/
+!skills/**/
+!skills/**/SKILL.md
+!skills/**/DESCRIPTION.md
+!skills/**/PORT_NOTES.md
+
+# Historical/reference files often contain raw session records, example tokens,
+# URLs with access tokens, or copied credentials. Add specific clean references
+# later after review instead of allowlisting them by pattern.
+skills/.archive/
+skills/**/references/
+skills/**/tests/
+skills/**/workflows/
+
+# Lightweight docs/templates that explain local behavior
+!docs/
+!docs/**/
+!docs/**/*.md
+!templates/
+!templates/**/
+!templates/**/*.md
+
+# Never track nested code repo contents from the parent config repo
+hermes-agent/
+
+# Explicit high-risk runtime/secret areas, kept here for readability
+.env*
+auth*.json
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+chrome-profile/
+logs/
+sessions/
+cron/
+cache/
+artifacts/
+audio_cache/
+image_cache/
+state/
+task_cards/
+subagents/
+temp_vision_images/
+venv/
+node_modules/
