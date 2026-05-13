@@ -200,6 +200,112 @@ openclaw gateway restart
 - OpenClaw 官方文档：https://docs.openclaw.ai/zh-CN/security/exec-approvals
 - CLI help：`openclaw approvals --help`
 
+## 🖥️ 本地桌面/浏览器检查（通过 delegate_task）
+
+OpenClaw 可以作为桌面控制 Agent，检查用户本地环境（Chrome 浏览器、Tampermonkey 脚本、扩展状态等）。
+
+### 典型场景
+
+- 用户问「检查我是不是装好了 X 脚本」
+- 用户说「帮我看下我的浏览器」
+- 需要查看用户本地的文件、截图、Chrome tabs 状态
+
+### 工作流
+
+```python
+delegate_task(
+    agent_id='openclaw',
+    goal='<描述要检查的内容>',
+    context='<环境上下文，如用户是 macOS，浏览器是 Chrome>'
+)
+```
+
+### 检查 Tampermonkey 已安装脚本
+
+OpenClaw 可以通过 Chrome 扩展的 LevelDB 存储直接读取已安装脚本的元数据：
+
+```bash
+# Tampermonkey 的 Local Extension Settings 路径
+~/Library/Application Support/Google/Chrome/Default/Local Extension Settings/dhdgffkkebhmkfjojejmpbldmpobfkfo/
+
+# 从 LevelDB 日志提取脚本信息
+cat 000003.log | strings | grep -E "header|enabled|name|author|version" | head -50
+```
+
+或直接用 `python3` 解析 LevelDB 的 `log` 文件：
+```python
+# Python: 解析 LevelDB 日志中的 JSON 数据
+import re, json
+with open(path_to_log, 'rb') as f:
+    data = f.read()
+    # 查找 JSON 块中的脚本配置
+    matches = re.findall(rb'\{.*"enabled":(?:true|false).*\}', data)
+    for m in matches:
+        try:
+            obj = json.loads(m.decode('utf-8', errors='replace'))
+            print(f"Script: {obj.get('name')} v{obj.get('version')} by {obj.get('author')} — {'ENABLED' if obj.get('enabled') else 'DISABLED'}")
+        except: pass
+```
+
+### 截图（macOS）
+
+```bash
+screencapture -T0 /Users/gu/screenshot.png
+# 然后通过 MEDIA:/path/to/file 发送给用户
+```
+
+#### ⚠️ 用户要的是 App 窗口截图，不是全屏（2026-05-11 补充）
+
+**症状**：OpenClaw 截了 2880×1800 的全屏，用户说「不能只截图app么？我不需要整个桌面的截图」。
+
+**原因**：`screencapture -T0` 默认截全屏，而用户期望的是只看到 App 窗口本身。
+
+**修复**：用 ImageMagick 的 `convert -crop` 或 Python Pillow 裁剪到 App 窗口区域。
+
+```bash
+# 方式1：screencapture + ImageMagick crop
+screencapture -T0 /tmp/fullscreen.png
+convert /tmp/fullscreen.png -crop 288x541+0+25 /Users/gu/懂球帝_第一屏.png
+
+# 方式2：screencapture + Python Pillow（更可控）
+python3 -c "
+from PIL import Image
+img = Image.open('/tmp/fullscreen.png')
+# 裁取窗口区域 (left, top, right, bottom)
+cropped = img.crop((0, 25, 288*2, 541*2))  # Retina屏×2
+cropped.save('/Users/gu/懂球帝_第一屏.png')
+"
+```
+
+**Pitfalls**：
+- Retina 屏下物理像素是逻辑像素×2，裁剪时注意坐标缩放（逻辑 288×541 → 物理 576×1082）
+- 窗口位置可能变化（用户拖动后），每次截图前先获取窗口位置
+- 用 `screencapture -R<left,top,width,height>` 可直接截矩形区域，但坐标也是物理像素
+- 子 Agent 截图后通过 `MEDIA:/path/to/file` 发送给用户，不要在文字描述里用 markdown image 语法（飞书用 MEDIA: 前缀）
+
+### Pitfalls
+
+- **第一次看到用户问本地浏览器时，别再说「我操作的是云端环境」** — OpenClaw 就是做这个的。第一反应应该是 delegate_task(agent_id='openclaw')
+- Chrome 的 AppleScript JavaScript 注入需要手动在开发者菜单开启，不可靠。走 LevelDB 文件直接解析更稳定
+- **CDP 调试**需要 Chrome 启动时加 `--remote-allow-origins=*`，用户手动打开的 Chrome 通常没有这个 flag，WebSocket 连接会被 403 拒绝
+- **GM_registerMenuCommand 脚本** — 用户安装的脚本可能通过菜单项（而非页面 DOM 修改）工作。用户说「没生效」时，提醒他们点 🐒 图标看有没有菜单命令
+- **vision_analyze 有 429 限流** — 高频调用会被拒绝，注意间隔或 fallback 到 tesseract OCR
+- 截图文件路径要在 OpenClaw 能找到的地方（如 `/Users/gu/` 下）
+- 使用 MEDIA: 前缀发送图片给用户：`MEDIA:/Users/gu/screenshot.png`
+- 子Agent 的 isolation 应设为 shared（readonly 会阻止截图工具写盘）
+
+### 桌面操作备用方案：Agent TARS
+
+如果 OpenClaw 的桌面操作效果不佳（用户反馈「不好用」），可以考虑用 Agent TARS（字节跳动开源的多模态 GUI Agent）作为备选。
+
+**工作流**：Hermes → `terminal()` → `agent-tars run --headless --input "..." --format json` → 解析 JSON 结果
+
+**配置要点**：需传入 `--model.provider`, `--model.baseURL`, `--model.id`, `--model.apiKey` 来指定底层模型（推荐 DeepSeek V4 Pro）
+
+详见参考：`references/agent-tars-integration.md`
+
+详细参考：`references/local-desktop-inspection.md`
+
 ## ⚠️ Agent 报 "No API key found for provider X"
 
 症状：
@@ -253,6 +359,93 @@ console.log('Done');
 - `chokidar@^5.0.0 (used by memory-core)` — 兼容性提示，不影响功能
 - `OAuth dir not present (~/.openclaw/credentials)` — 未配置 OAuth，不影响
 - `Gateway service PATH includes version managers` — PATH 信息提示，不影响
+
+## ⚠️ 切换默认模型 Provider（2026-05-11 补充）
+
+OpenClaw 的 agent 默认模型在 `openclaw.json` 中配置，切换步骤：
+
+### Step 1: 确认 provider 已配置
+
+检查 `models.providers` 是否已有目标 provider：
+
+```bash
+python3 -c "import json; c=json.load(open('/Users/gu/.openclaw/openclaw.json')); print(list(c['models']['providers'].keys()))"
+```
+
+如果 provider 不存在，需要先在 `models.providers` 中添加（参照已有的 provider 格式）。
+
+### Step 2: 修改 agent 默认模型
+
+改两个地方：
+
+1. **`agents.defaults.model.primary`** — 设为 `"provider/model-id"`（如 `"deep-seek/deepseek-v4-flash"`）
+2. **`agents.defaults.models`** — 添加别名，用于 Dashboard 显示
+
+```bash
+# 用 node 直接改（比手写 JSON 安全）
+node -e "
+const fs = require('fs');
+const cfg = JSON.parse(fs.readFileSync(process.env.HOME + '/.openclaw/openclaw.json', 'utf8'));
+cfg.agents.defaults.model.primary = 'deep-seek/deepseek-v4-flash';
+cfg.agents.defaults.models = {
+  ...cfg.agents.defaults.models,
+  'deep-seek/deepseek-v4-flash': { alias: 'DeepSeek Flash' },
+  'deep-seek/deepseek-v4-pro': { alias: 'DeepSeek Pro' }
+};
+fs.writeFileSync(process.env.HOME + '/.openclaw/openclaw.json', JSON.stringify(cfg, null, 2));
+console.log('Done');
+"
+```
+
+### Step 3: 清理空模型条目（常见陷阱）
+
+**症状**：`openclaw gateway restart` 报错：
+```
+Config invalid
+- models.providers.deep-seek.models.2.id: Too small: expected string to have >=1 characters
+- models.providers.deep-seek.models.2.name: Too small: expected string to have >=1 characters
+```
+
+**原因**：provider 的 `models` 数组中存在空条目 `{"id":"","name":""}`，OpenClaw 新版 schema 校验不通过。
+
+**修复**：删掉该空条目（注意处理尾随逗号，JSON 不允许）：
+
+```bash
+node -e "
+const fs = require('fs');
+const cfg = JSON.parse(fs.readFileSync(process.env.HOME + '/.openclaw/openclaw.json', 'utf8'));
+const provider = cfg.models.providers['deep-seek'];
+if (provider) {
+  provider.models = provider.models.filter(m => m.id && m.id.length > 0);
+  fs.writeFileSync(process.env.HOME + '/.openclaw/openclaw.json', JSON.stringify(cfg, null, 2));
+  console.log('Cleaned ' + provider.models.length + ' valid model entries');
+}
+"
+```
+
+### Step 4: 重启 Gateway
+
+```bash
+openclaw gateway restart
+```
+
+### Step 5: 验证
+
+```bash
+# 检查 Gateway 是否正常
+curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:18789/
+
+# 运行一个快速任务验证 OpenClaw 在新模型下可用
+# 在 Hermes 中：delegate_task(agent_id='openclaw', goal='简单测试任务')
+```
+
+### Pitfalls
+
+- **provider 名是 `deep-seek`（带连字符）**，不是 `deepseek`。在 `models.providers` 中定义的是什么名，引用时就用什么名
+- **JSON 尾随逗号**：删掉数组最后一项后，记得检查上一项末尾没有多余的逗号，否则 `openclaw gateway restart` 会报 JSON parse error
+- **Gateway 重启后可能有延迟**：建议等 2-3 秒再验证
+- 如果有两个同名 provider 的 key 在不同的 credential store，以 `models.providers` 中的 apiKey 为准
+- 改配置前最好备份：`cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak`
 
 ## ⚠️ 升级流程（2026-05-05 补充）
 
@@ -404,6 +597,70 @@ openclaw channels status --probe
 openclaw channels remove --channel <channel-name>
 # 或在 config 里直接设 enabled: false
 ```
+
+## 🗑️ 清空对话历史（会话管理）（2026-05-11 补充）
+
+用户要求「把对话都清空」时，需要清除 OpenClaw 的 session store。
+
+### 会话存储位置
+
+```
+~/.openclaw/agents/main/sessions/sessions.json
+```
+
+### ⚠️ 格式陷阱
+
+session store 的格式是 **键值对对象**，不是 `{"sessions":[...]}` 数组：
+
+```json
+{
+  "agent:main:feishu:direct:ou_f66b6d3e9cc7917051b18c47bcb2e451": {
+    "sessionId": "e54891c7-...",
+    "updatedAt": 1778459090548,
+    ...
+  }
+}
+```
+
+**错误做法**：写入 `{"sessions":[]}` → OpenClaw 仍会报告 1 个残留会话。
+**正确做法**：写入空对象 `{}`。
+
+### 清空步骤
+
+```bash
+# 1. 备份当前会话
+cp ~/.openclaw/agents/main/sessions/sessions.json \
+   ~/.openclaw/agents/main/sessions/sessions.json.bak.$(date +%s)
+
+# 2. 清空为 {}
+echo '{}' > ~/.openclaw/agents/main/sessions/sessions.json
+
+# 3. 验证
+openclaw sessions --json | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print(f'剩余 {d[\"count\"]} 个会话')"
+# 应输出：剩余 0 个会话
+
+# 4. 可选：清理旧的备份存档
+rm -rf ~/.openclaw/agents/main/sessions/archived-*/
+```
+
+### 额外检查点
+
+如果执行第 2 步后仍显示有会话，可能有 duplicate 路径：
+
+```bash
+# 检查是否有 ~/.openclaw/.openclaw/agents/main/sessions/ 下的副本
+ls -la ~/.openclaw/.openclaw/agents/main/sessions/sessions.json 2>/dev/null
+# 如果存在，也清掉
+echo '{}' > ~/.openclaw/.openclaw/agents/main/sessions/sessions.json
+```
+
+### Pitfalls
+
+- `openclaw sessions cleanup` 命令是维护性清理（按 age/cap 淘汰），不是「全部清空」
+- `openclaw reset --scope config+creds+sessions` 会清空全部配置+凭据+会话，太重了——如果只想清会话别用这个
+- 清空后 OpenClaw Gateway 无需重启，已缓存的连接（如飞书长连）会直接创建新会话
+- 如果想同时重置当前上下文（避免旧对话内容影响新任务），可以顺便重启 Gateway：`openclaw gateway restart`
 
 ## 与 Hermes 通信（Mailbox 协议）
 

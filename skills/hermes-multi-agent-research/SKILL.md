@@ -484,30 +484,69 @@ bb-browser site list     # 查看可用 adapter
 ```text
 用户指令 (如 "搜集蒙牛和伊利关于世界杯的营销动作")
   │
-  ├─ Step 1: 百度搜索两个品牌
-  │   browser_navigate(url="https://www.baidu.com/s?wd=蒙牛+2026世界杯+营销+最新")
-  │   browser_navigate(url="https://www.baidu.com/s?wd=伊利+2026世界杯+营销+最新")
-  │   注意：URL 需要手动 URL encode 中文
+  ├─ Step 1: 5维并行搜索（优于逐个搜索）
+  │   同时打开多个搜索标签页，覆盖以下维度：
+  │   ① 品牌直接搜索："懂球帝 品牌 营销 产品 最新"
+  │   ② 行业趋势："体育营销 2026 最新 足球"
+  │   ③ 赛事专题："世界杯 营销 最新 2026"
+  │   ④ 竞品动态："足球APP 竞品 直播吧 虎扑 最新动态"
+  │   ⑤ 行业投融资："体育互联网 行业 投融资 2026"
+  │   注意：URL 需要手动 URL encode 中文；并行 browser_navigate 效率最高
   │
   ├─ Step 2: 阅读搜索结果页面，识别关键文章
   │   browser_snapshot() 查看结果列表
   │   优先阅读：品牌官网、新华网/海报新闻等正规媒体、行业分析文章
   │   注意：搜索"大家还在搜"区域提示了用户真实需求
+  │   注意：百度搜索结果中可能包含 AI 摘要（标注"AI导读"），内容需核实
   │
   ├─ Step 3: 深入阅读关键文章
   │   browser_click(ref='@eXX') 点击文章链接
   │   browser_snapshot(full=true) 获取全文
   │   注意：很多文章需要多次 snapshot 才能看完（百度页面截断）
+  │   常见坑：点击搜索结果链接后可能被重定向到 Baidu 的信息聚合页
+  │         → 解法：重新在搜索结果页找下一个可信来源的链接，或换关键词搜该文章标题
   │
   ├─ Step 4: 多轮搜索（细化方向）
   │   根据第一步结果中的新发现，做二次搜索
-  │   例如：从"容声冰箱×蒙牛官宣"发现跨界合作 → 专门搜这个方向
+  │   例如：从"蒙牛世界杯版权僵局"发现新数据 → 专门搜该方向获取更多信源
   │
   ├─ Step 5: 交叉验证
   │   多个来源交叉验证同一事实（如版权报价数字）
   │   注意区分：AI生成内容、自媒体观点 vs 官方媒体
+  │   交叉验证技巧：同一事件找 3+ 独立来源（正规媒体 > 行业媒体 > 自媒体）
   │
-  └─ Step 6: 汇编报告 → 存入 Obsidian
+  └─ Step 6: 汇编报告 → 按简报模板输出
+```
+
+### 扩展：Cron Job 情报自动化模式（H 情报官）
+
+当本流程作为 Cron Job 定时执行（无用户交互）时，工作流自动化为以下模式：
+
+```text
+Cron 触发
+  │
+  ├─ Step 1: 5维并行搜索（与上述 Step 1 相同）
+  │   自动发起 5 个 browser_navigate 调用
+  │   不等待，全部并行发出
+  │
+  ├─ Step 2: 结果扫描与筛选
+  │   每个搜索结果页用 browser_snapshot() 获取快照
+  │   自动识别关键文章：优先选品牌/平台原创、正规媒体、行业垂直媒体
+  │   原则：筛出 3-5 条最有价值的情报
+  │
+  ├─ Step 3: 深入阅读（自主决策）
+  │   无需用户确认，直接点击最有价值的文章
+  │   用 browser_snapshot(full=true) 获取全文
+  │   注意文章可能被 Baidu 重定向 → 换来源
+  │
+  ├─ Step 4: 自主判断
+  │   - 所有信息必须标注来源链接 + 时间 + 可信度
+  │   - 重复情报不推送，除非出现新数据
+  │   - 无有价值情报时输出 "[SILENT]"（静默模式）
+  │
+  └─ Step 5: 按简报模板自动输出
+       Cron 的最终输出会被自动投递到斯塔姆群
+       不要额外调用 send_message
 ```
 
 ### 百度搜索结果页解析要点
@@ -597,6 +636,487 @@ bb-browser site list     # 查看可用 adapter
 
 ---
 
+## §H — Profile-Based Multi-Bot Isolation (多 Agent 独立上下文)
+
+> 适用场景：只有一个飞书 Bot，但需要多个独立 Agent 上下文（如全栈总控 + 纯编码助手），且不想在同一个会话里串上下文。
+
+### 问题背景
+
+Hermes Feishu 适配器目前是**单 Bot 模式**（`feishu.py` 第 40 行注释）。一个飞书 Bot = 一个 gateway 连接 = 一个会话上下文。如果所有任务都走同一个 Bot，主控和编码/营销任务的会话历史会互相污染。
+
+### 方案：Hermes Profiles
+
+Hermes 原生支持 Profiles，每个 profile 是一个完全独立的 Hermes Agent：
+
+```bash
+# 创建 profile（--clone 复制主配置，省去重配 API key）
+hermes profile create pirlo --clone
+
+# 起第二个 gateway（绑定不同飞书 bot）
+pirlo gateway
+```
+
+每个 profile 拥有自己独立的：
+
+| 组件 | 主控 Hermes | pirlo profile |
+|------|-------------|---------------|
+| 飞书 Bot | 马蒂尼 app_id/secret | 皮尔洛 app_id/secret |
+| config.yaml | 全栈 system prompt | 纯编码 system prompt |
+| .env | 马蒂尼凭据 | 皮尔洛凭据 |
+| SOUL.md | 总助人格 | 编码助手人格 |
+| ~/.hermes/skills/ | 主控白名单 ~10 个 | 仅 coding skills |
+| sessions/ | 全栈对话历史 | 纯编码对话历史 |
+| memories/ | 全栈记忆 | 编码专用记忆 |
+
+### 创建步骤
+
+```bash
+# 1. Clone 主配置文件
+hermes profile create pirlo --clone
+
+# 2. 换飞书 Bot 凭据
+# ~/.hermes/profiles/pirlo/.env
+# FEISHU_APP_ID=皮尔洛的app_id
+# FEISHU_APP_SECRET=皮尔洛的app_secret
+
+# 3. 换系统提示词
+# ~/.hermes/profiles/pirlo/config.yaml 中修改 feishu.feishu_system_prompt
+
+# 4. 裁剪 skills（只保留编码相关）
+# 在 pirlo profile 的 skills/ 下只放 coding skills
+
+# 5. 启动
+pirlo gateway
+```
+
+### 与 Agent-Scoped Skills 的关系
+
+两者是互补而非替代关系：
+
+| 维度 | Profiles（多 Bot） | Agent-Scoped Skills（单 Bot 内） |
+|------|-------------------|--------------------------------|
+| 上下文隔离 | 完全独立（不同会话、不同记忆） | 共享上下文，仅 skill 不同 |
+| 用户使用 | 飞书里两个不同联系人 | 同一个人，slash 命令切换 |
+| 实现复杂度 | 开箱即用（`hermes profile create`） | 需改源码（skill_commands.py + delegate_tool.py） |
+| 部署成本 | 多一个飞书 Bot（需申请权限） | 无需额外 Bot |
+| 适用场景 | 上下文需要完全隔离（如工作/个人） | 上下文可共享但功能要分流 |
+
+### 推荐策略
+
+```
+只有一个飞书 Bot
+  ├─ 上下文污染不明显 ──→ 先用 slash 命令 + channel_skill_bindings 分流
+  └─ 上下文污染严重 ──→ 建第二个 Profile + 第二个飞书 Bot
+       ├─ 原始仓库克隆链接可以用 https://github.com/pingan8787/image2prompt.git
+       └─ 等实现 Agent-Scoped Skills 后可以合并回单 Bot
+```
+
+## §I — 多 Agent 团队架构设计（2026-05-12 最终锁版）
+
+> 适用场景：设计或讨论 Agent 团队分工，决定每个 Agent 的角色、模型、skillset、通信方式。
+
+### 架构原则
+
+1. **角色优先，再配 Agent** — 先搭角色框架，再根据角色要求选 Agent。不要跳步。每确认一个角色就固定下来，不再重复讨论。
+2. **角色分工铁律 — 已被区分出去的角色绝不合并回去** — 当用户表达了明确的角色分工意愿后，任何试图合并/缩编角色的建议都会引起用户不满。如果某个角色功能有重叠，重新分配职责（如 OpenClaw 从 C 桌面操作员改为 E+H 双角色），而不是把角色删掉合并给别人。**"我目的是分工"** 是用户的明确诉求。
+3. **先定灵魂（soul/persona），再配技术** — 每个角色必须先定义人格定位、性格特点、工作习惯、边界范围，再去配置 Agent 和模型。灵魂定义是技术落地的前置步骤，不能跳过或想当然自行添加。
+4. **总控（Coordinator）+ 专家（Specialist）** — 一个总控 Agent（马蒂尼）负责日常沟通、意图理解、任务分配；专业任务派给对应的专家 Agent。
+5. **上下文隔离** — 每个 Agent 独立的会话、记忆、skills，不跨 Agent 污染上下文。
+6. **摘要汇报，记忆不膨胀** — 子 Agent 干完活，总控只记结果摘要，不记执行过程。追问时知道找谁补细节。
+7. **参考架构：三省六部制 (edict)** — 开源项目 `github.com/cft0808/edict`（15.7k star）是一个基于 OpenClaw 的多 Agent 编排系统，采用唐代三省六部制架构。完整研究笔记见 `references/edict-architecture-notes.md`。
+
+### 最终角色框架（8 角色确认锁版）— 已全部实现 ✅
+
+| 角色 | 用户名 | Agent | 模型/工具 | 职责 | 通信方式 | 状态 |
+|------|-------|-------|-----------|------|---------|------|
+| **A 总助** | 马蒂尼 | Hermes | DeepSeek V4 Flash | 任务判断、分派、协调、轻量读取 | 马蒂尼 DM（用户对话入口） | ✅ 已运行 |
+| **B 技术专员** | 内斯塔 | `agent_id='nesta'` | DeepSeek V4 Pro（预处理）→ Claude Code（执行） | 技术任务预处理+复审，delegate 给 Claude Code 执行编码 | 马蒂尼 delegate | ✅ 已注册 named agent，含 soul 人格 |
+| **C 桌面操作员** | — | `agent_id='agent-tars'` | DeepSeek V4 Pro（视觉模型，CLI 参数配） | macOS 桌面操作、截图、打开 App | 马蒂尼 delegate（`agent-tars run --headless --input ... --format json`） | ✅ 已注册 named agent，CLI 已安装 |
+| **D 代码审查员** | — | `agent_id='codex'` | default（继承父级） | 审查代码、评审方案、质量把关 | 马蒂尼 delegate | ✅ 已修正（type: code_reviewer，去掉 file_modification）|
+| **E 调研专员** | — | `agent_id='openclaw'` | zai/glm-5-turbo（Chrome + DuckDuckGo） | 信息搜集、网页浏览、竞品调研、资料整理（不做分析） | 马蒂尼 delegate | ✅ 已修正（type: researcher，路由从桌面操作改为调研）|
+| **F 方案策划** | 皮尔洛 | `agent_id='pirlo'` | DeepSeek V4 Pro | 基础方案框架、卖点提炼、竞品对比、排期初稿 | 马蒂尼 delegate 或用户直接 | ✅ 已注册 named agent，含 soul 人格 |
+| **G 质量审核角色（安布罗西尼）** | 安布罗西尼 | `agent_id='hermes-internal'` | DeepSeek V4 Pro，type: quality_gate | 把关复杂任务质量（审方案逻辑、情报准确性、代码安全） | delegate_task （内部质检，非独立 Bot） | ✅ 已运行，2026-05-13 更名为安布罗西尼
+| **H 情报官** | — | `agent_id='openclaw'`（E 同实例）+ cron | zai/glm-5-turbo | 定时监控、竞品跟踪、情报简报推送至斯塔姆群（与 E 共用同一 OpenClaw 实例） | 后台独立运行 + cron（每天 09:00 首推） | ✅ cron 已创建，推斯塔姆群 |
+
+**关键说明：**
+- **A 总助**已锁版，不再讨论。后续所有角色讨论以 A 已确认为前提推进。
+- **B 技术专员**：内斯塔负责「预处理 + 复审」，Claude Code 负责「最后一公里编码」。预处理=搜项目结构、定位文件、理解模糊需求；复审=检查输出质量。这个决策是在用户承认「不熟悉编程，给的需求一定不清晰」的背景下做出的——中间层在非技术用户场景下价值最大。
+- **C 桌面操作员**：Agent TARS 通过 headless 模式 + JSON 输出与 Hermes 集成。详见 `references/agent-tars-integration.md`。OpenClaw 因桌面操作「不好用」被重新定位。
+- **D 代码审查员**：codex 已有且 active，直接采用。
+- **E 调研专员**：OpenClaw 重新定位为调研专员。利用其 Chrome 浏览器操控+DuckDuckGo 搜索+Canvas UI 生成的长板做信息搜集，避开桌面操作交互不好的短板。与 H 情报官共用同一 OpenClaw 实例。\n- **F 方案策划**：皮尔洛待创建 named agent。DeepSeek V4 Pro 做基础方案工作（框架、卖点提炼、竞品对比、排期初稿），用户核心创意走 ChatGPT 网页版。\n- **G 审核角色**：hermes-internal 已有且 active，read-only 模式适合质检。\n- **H 情报官**：OpenClaw 从 C 桌面操作员改为 H 情报官。与 E 调研专员共用同一 OpenClaw 实例。利用 Chrome 浏览器操控+Canvas UI 生成+独立后台进程的长板做情报监控。
+- **推送渠道**：所有 cron 推送（早报、竞品监控等）走斯塔姆群（设为 home channel），不干扰马蒂尼 DM。
+
+### 角色定义工作流
+
+（同旧版，保留不变）
+
+### 角色定义工作流
+
+当需要为新团队角色定义灵魂（soul/persona）时，按以下顺序推进：
+
+1. **起草定位** — 先写初稿，涵盖：角色定位、性格特点、工作习惯、能力边界
+2. **用户细调** — 用户过目后逐条确认/修改，一个角色一个角色过
+3. **锁版** — 双方确认后即固定，不再回归讨论
+4. **再配技术** — 灵魂确认后，再去配置 Agent 注册表、模型、profile
+
+**禁止偷步**：不要在用户未确认前自行添加用户没说的性格特征或工作习惯。灵魂定义必须经过用户过目和确认。
+
+每个角色灵魂定义应包含：
+
+```markdown
+**定位：** 一句话说明这个角色是干什么的
+**性格：** 2-3 个关键词 + 一句话解释
+**工作习惯：** 3-5 条具体做事方式
+**边界：** 明确写清这个角色不做什么
+```
+
+### 任务分级框架
+
+马蒂尼（总助）遇到任务时，按以下 4 个维度判断难度级别：
+
+| 维度 | 简单 | 中等 | 复杂 |
+|------|------|------|------|
+| **动作类型** | 读文件、搜网页、查知识库、问答 | 写方案、改文案、写代码、改配置 | 重要方案、跨部门任务 |
+| **步骤数** | 1-2 步 | 3-5 步 | 5+ 步 |
+| **风险** | 无风险（读操作） | 有风险（写操作） | 高风险（改系统配置、删文件） |
+| **是否需要看成品** | 不需要 | 直接看 | 需要确认方向再动手 |
+
+**对应处理方式：**
+```
+简单 → 马蒂尼自己处理
+中等 → delegate 给对应角色直接执行
+复杂 → 先规划 → 可选审核 → 执行 → 汇报摘要
+```
+
+> **原则**：不在规则上内耗。判断错了不致命，顶多多走一步，下次调整。判断框架给马蒂尼的 prompt 足够用。
+
+### 记忆策略
+
+- 马蒂尼只存**结果摘要**，不存执行日志
+- 追问时知道找谁补细节
+- 各子 Agent 执行过程的"脏东西"不进入马蒂尼的上下文
+
+### edict (三省六部制) 参考映射
+
+| 你的角色 | edict 三省对应 | edict 六部对应 |
+|---------|---------------|---------------|
+| 你 | **皇上** — 下旨 | — |
+| A 总助 | **太子** — 分拣/闲聊直回 | — |
+| F 方案策划 | **中书省** — 规划方案 | — |
+| （缺审核角色） | **门下省** — 审议/封驳 | — |
+| E 通用执行器 | **尚书省** — 派发/协调 | — |
+| B 技术专员 | — | **兵部** — 代码实现 |
+| C 桌面操作员 | — | **工部** — 基建操作 |
+| D 代码审查员 | — | **（兵部内审+门下省外审）** |
+
+### 通信模式
+
+**同 gateway 内（马蒂尼 → 子 Agent）：**
+- `delegate_task(agent_id='...', goal=..., context=...)` — 标准子 Agent 派发
+- 上下文隔离（子 Agent 独立会话），父 Agent 只看结果摘要
+
+**跨 gateway（马蒂尼 ↔ 皮尔洛 两个独立 Profile）：**
+- 皮尔洛 profile 启动 api_server（OpenAI 兼容接口）
+- 马蒂尼通过 HTTP/curl 调皮尔洛的处理能力
+- 互不共享 memory/session，通过 HTTP 请求传递上下文
+- 皮尔洛也可以有自己的飞书 Bot，用户能直接找他
+
+### Agent Middleman 决策模式（新增 §J）
+
+**场景**：CoS（马蒂尼）要派一个技术任务给执行者（如 Claude Code），是否需要在中间加一个中间层 Agent（如内斯塔/皮尔洛）？
+
+**决策框架**：
+
+```
+马蒂尼收到技术任务
+  │
+  ├─ 直接委托：马蒂尼 → delegate(agent_id='claude') → 执行
+  │   ✅ 最直接，一步到位
+  │   ❌ Claude Code 每次全新会话，不做预处理
+  │   ❌ 没有复审，结果直接返回
+  │
+  └─ 经过中间层：马蒂尼 → delegate(agent_id='nesta')
+                   → 内斯塔预处理 + 复审 → delegate(agent_id='claude')
+                   → 内斯塔审核 → 返回
+      ✅ 预处理：搜文件、理解上下文、整理好再交给执行者
+      ✅ 复审：执行者干完活，中间层先看质量把关
+      ✅ 长期记忆：中间层记住项目偏好、常见坑、用户要求
+      ❌ 多一层，增加开销和延迟
+```
+
+**判断标准**：
+
+| 维度 | 直接委托 | 经过中间层 |
+|------|---------|-----------|
+| 任务类型 | 改已有代码、跑脚本、修已知 bug | 新项目调研、排查复杂问题、写大块代码 |
+| 是否需要先了解背景 | 用户已说清楚，不需要预处理 | 需要先翻文件、看历史、理解项目结构 |
+| 输出风险 | 低（改一行、跑个命令） | 高（可能破坏结构/引入 bug） |
+| 用户与技术执行者的熟悉度 | 很熟（直接说就行） | 不太熟（需要中间层消化用户习惯） |
+
+**如果中间层不能加值，就不要加。** 中间层必须有明确的增值点（预处理/复审/记忆积累），否则只是多一层传话。
+
+**真实案例（2026-05-12 讨论）**：内斯塔（B 技术专员）是否应该作为 Claude Code 的中间层？用户承认「没想明白」。这个讨论本身就是典型案例——当中间层的增值点不明确时，先直接委托，后续如果需要预处理/复审再引入中间层。
+
+**铁律**：这个决策不需要一次想明白。先走直接委托，当出现「每次都要重新说明上下文」「Claude Code 结果需要人检查才放心」时，再引入中间层。
+
+### Profiles 详细配置
+
+```bash
+# 创建 profile（从主配置克隆）
+hermes profile create pirlo --clone
+
+# 皮尔洛的 .env — 换飞书 Bot 凭据
+# FEISHU_APP_ID=皮尔洛的app_id
+# FEISHU_APP_SECRET=皮尔洛的app_secret
+# FEISHU_DOMAIN=feishu
+
+# 起第二个 gateway
+pirlo gateway
+```
+
+> ⚠️ **Profile 克隆后必须检查的陷阱**：
+> 1. `feishu_system_prompt` 会被克隆（源人格覆盖新人格）→ 必须修改
+> 2. `api_server` 端口冲突（默认 8642）→ 纯飞书 Bot 建议 `API_SERVER_ENABLED=false`
+> 3. `channel_skill_bindings` 也会被克隆 → 删除无关绑定
+> 4. `skills/` 目录有 150+ 无关技能 → 需按角色裁剪
+> 5. OpenClaw 可能还连着该 Bot → 先禁掉 OpenClaw 频道
+>
+> 完整清单见 `hermes-subagent-delegation` skill 的「Profile 部署后检查清单」。
+
+## 为 Agent 创建独立 Profile 的完整步骤
+
+当用户希望 Agent 在飞书上有独立 Bot 并拥有自己的 persona 时（路径 B：独立 Gateway + SOUL.md），走以下流程：
+
+### Step 1: 创建 Profile
+
+```bash
+hermes profile create {agent_name} --clone
+```
+
+这会创建 `~/.hermes/profiles/{agent_name}/`，包含克隆自 default 的：
+- `config.yaml`，`.env`，`SOUL.md`，`skills/`
+- 创建一个 wrapper 命令：`~/.local/bin/{agent_name}`
+
+### Step 2: 编写 SOUL.md
+
+```markdown
+# {Agent名称} SOUL
+
+## 身份
+我是{Agent名称}，懂球帝多 Agent 团队的{角色}。{一句话描述核心职责}。
+
+## 工作习惯
+- {习惯 1}
+- {习惯 2}
+...
+
+## 边界
+- {不做什么 1}
+- {不做什么 2}
+...
+```
+
+### Step 3: 配置飞书 Bot 凭据
+
+编辑 `~/.hermes/profiles/{agent_name}/.env`：
+
+```bash
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=xxx
+```
+
+**⚠️ app_secret 获取陷阱：**
+- macOS Keychain 存的 secret 从命令行读不到（`security find-generic-password` 返回 item not found）
+- 飞书开放平台的复制按钮会触发 browser clipboard write，但 browser JS 读 clipboard API 会被沙箱拦截（timeout）
+- **最可靠方法**：让用户在飞书开放平台手动复制，粘贴给你
+
+### Step 4: 启动 Gateway
+
+```bash
+{agent_name} gateway start       # 后台
+# 或
+{agent_name} gateway run --replace  # 前台替换
+```
+
+### Step 5: 验证
+
+```bash
+ps aux | grep "hermes.*profile.*{agent_name}" | grep -v grep
+# 在飞书 DM 该 Bot 验证人格
+```
+
+### 马蒂尼的能力边界速查
+
+| 操作 | 自留还是派出去 | 给谁 |
+|------|--------------|------|
+| 读文档/文件 | ✅ 自留 | — |
+| 搜索/查资料 | ✅ 自留 | — |
+| 日常对话 | ✅ 自留 | — |
+| 管理记忆/待办 | ✅ 自留 | — |
+| 派活 delegate_task | ✅ 自留 | — |
+| 写文件/改代码 | ❌ 派出去 | 皮尔洛 / Claude / deepseek-tui |
+| 执行终端命令 | ❌ 派出去 | 皮尔洛 / Claude |
+| 桌面操作/截图 | ❌ 派出去 | OpenClaw |
+| 代码审查 | ❌ 派出去 | Codex |
+| 修改系统配置 | ❌ 派出去 | 皮尔洛 + 任务卡 |
+| 深度调研（5+步）| ❌ 派出去 | Hermes 通用执行 |
+
+- 每个 profile 需要独立的飞书自建应用（申请 10-15 分钟，权限配置 5 分钟）
+- 多 gateway 进程增加内存和 CPU 开销（~500MB+ RAM / 额外进程）
+- Profiles 之间不能共享记忆（如需共享需主动通过文件传递）
+- 当前 Hermes Feishu 适配器不支持单 Bot 多上下文隔离（feishu.py 明确标注 "single-bot mode"）
+
+### 现有基础设施参考
+
+- `~/.hermes/hermes-agent/website/docs/user-guide/profiles.md` — Hermes Profiles 官方文档
+- `~/.hermes/config/agent-registry.json` — 每个 agent 的 subagent_profile 配置
+- `config.yaml` 中的 `channel_skill_bindings` — 已实现频道级 skill 绑定
+
+---
+
+## §J — 多Agent架构全链路测试协议
+
+> 适用场景：部署或修改多Agent架构后，需要系统性验证所有角色是否功能正常、人格正确、链路通畅。
+
+### 测试设计原则
+
+1. **并行优先** — 独立 Agent 的测试任务并行派发（max_concurrent_children=3），减少总耗时
+2. **分批递进** — 先测纯分析型 Agent（无副作用），再测需要外部资源（web/桌面）的 Agent
+3. **人格验证** — 每个 Agent 的测试任务必须包括自我介绍，验证 soul 人格注入正确
+4. **日志交叉检查** — 功能测试后扫 gateway 日志，定位隐性错误（断连、权限、超时）
+5. **结果可追溯** — 每个子测试记录 agent_id、耗时、tokens、exit_reason、发现的异常
+
+### 测试批次安排
+
+```
+批次 1（分析型，并行）→ 技术审计/代码审查/质量审核
+  内斯塔(B) + Codex(D) + hermes-internal(G)
+
+批次 2（内容型，并行）→ 方案策划/调研/桌面操作
+  皮尔洛(F) + OpenClaw(E) + Agent TARS(C)
+
+批次 3（基础设施验证）→ H 情报官 cron 手动触发 + gateway 日志扫描
+```
+
+### 每轮测试模板
+
+```python
+delegate_task(
+    agent_id='<agent_id>',
+    goal='<让 agent 展示其核心能力的任务，必须包含自我介绍>',
+    context='<语言偏好、输出格式要求>'
+)
+```
+
+### Agent 验证检查表
+
+| Agent | 验证项 | 通过标志 |
+|-------|--------|---------|
+| **内斯塔(B)** | 读文件+结构分析+技术建议 | 回复中自称"B 技术专员"，分析有深度，引用了具体文件内容 |
+| **Codex(D)** | Schema 完整性+P0/P1/P2 分级 | 输出按 P0/P1/P2 分级，明确指出缺少 soul 的 agent |
+| **hermes-internal(G)** | 架构完整性审核 | 输出明确的「+1 通过」或「打回」结论，理由具体可追溯 |
+| **皮尔洛(F)** | 方案框架输出 | 框架结构完整（8 个模块），[待补充] 标注规范，不编造数据 |
+| **OpenClaw(E)** | 网页搜索 | 返回结构化结果（来源+摘要），不空跑 |
+| **Agent TARS(C)** | 桌面操作 | 能开应用/截图/返回操作日志 |
+| **H 情报官 cron** | 手动触发验证 | cron job 的 last_status=ok，内容可推送到飞书 |
+
+### 常见失败模式
+
+#### 1. OpenClaw 搜索超时/低效
+
+**症状**：OpenClaw 用 DuckDuckGo HTML 版本搜索时，终端工具连续超时（`[Command timed out after 30s]`），或搜索转为大规模 shell 管道操作（`curl | python3`）触发安全审批。
+
+**根因**：OpenClaw agent 被配置为 `toolsets: [terminal, file]`，没有 `browser` 或 `web_search` 工具集。它只能通过 shell 调用 `curl` + 手动 HTML 解析来搜索，而不是使用原生的 web_search 工具。
+
+**影响**：一次简单搜索可能消耗 23 次工具调用、67 万输入 tokens、160 秒——效率极低。
+
+**诊断**：
+```python
+# 检查 tool_trace 中的 terminal 调用次数
+result['tool_trace'].count(lambda t: t['tool'] == 'terminal')
+# 正常搜索应 3-5 次终端调用，>10 次说明工具链不对
+```
+
+**修复方向**：
+- 给 OpenClaw 的 subagent_profile 加 `web_search`/`browser` toolsets
+- 或通过 Hermes 主控直接用 web_search 工具搜索，把结果传给 OpenClaw 做结构化整理
+- 或使用 autocli / bb-browser 等专用 CLI 工具替代 DuckDuckGo 页面爬取
+
+#### 2. DeepSeek API 子Agent 推理超时
+
+**症状**：子 Agent 工具调用执行成功（read_file 返回数据），但在模型生成大输出时中断：`exit_reason: "interrupted"`, `"waiting for model response (X s elapsed)"`。
+
+**特征**：`tokens > 0`（不是 0 tokens 的配错模式），工具调用正常，模型推理阶段超时。
+
+**修复**：换 provider（在 delegation 段改 model/provider）或把数据拆小分批。
+
+详见 `hermes-subagent-delegation` skill 的「子Agent模型推理超时」pitfall。
+
+#### 3. Feishu WebSocket 断连
+
+**症状**：gateway.error.log 中出现 `ERROR Lark: receive message loop exit, err: sent 1011 (internal error) keepalive ping timeout` 或 `Failed to resolve 'open.feishu.cn'`。
+
+**影响**：飞书 Bot 在断连期间不可用，消息丢失或延迟接收。
+
+**诊断**：
+```bash
+grep -c "keepalive ping timeout" ~/.hermes/logs/gateway.error.log --count
+grep -c "Failed to resolve 'open.feishu.cn'" ~/.hermes/logs/gateway.error.log --count
+```
+
+**临时缓解**：网关自动重连（日志显示 `trying to reconnect for the Xth time`），但断连窗口内消息丢失。
+
+**根本解决**：DNS 服务器稳定性问题，考虑设本地 DNS 缓存或用 `dnsmasq` 兜底。
+
+#### 4. Gateway 重启 drain 超时
+
+**症状**：日志出现 `Gateway drain timed out after 60.0s with 1 active agent(s); interrupting remaining work.`
+
+**原因**：`hermes gateway restart` 触发时，有活跃 agent 在运行，drain 无法完成。
+
+**影响**：活跃任务被中断，重启后可能丢失状态。
+
+**预防**：使用 `hermes gateway run --replace` 替代 `restart`，不依赖 launchd 生命周期管理。
+
+### 测试完成后产出的报告模板
+
+```markdown
+## 📋 全链路测试报告
+
+### ✅ 角色功能测试
+
+| 角色 | 测试内容 | 结果 | 耗时 | 说明 |
+|------|---------|------|------|------|
+| B 内斯塔 | ... | ✅/❌ | Xs | ... |
+| D Codex | ... | ✅/❌ | Xs | ... |
+| ... | ... | ... | ... | ... |
+
+### ⚠️ 发现的问题
+
+**P1 — 建议修**
+| 问题 | 影响面 | 详情 |
+|------|--------|------|
+
+**P2 — 可优化**
+| 问题 | 详情 |
+|------|------|
+
+### 🔬 日志深层发现
+gateway.error.log 输出的关键警告和错误。
+```
+
+### 测试实际结果归档
+
+每次全链路测试的结果应存档为 `references/test-run-{YYYY-MM-DD}.md`，包含：
+- 各 Agent 的测试摘要
+- 发现的异常列表
+- 修复/改进建议
+- 测试环境状态快照（各服务进程、版本号）
+
+参考文件：`references/test-run-2026-05-13.md` — 首次 8 Agent 全链路测试实录。
+
+---
+
 ## §G — Agent 路由决策指南
 
 > Absorbed from `agent-routing-guide` (archived). Use when deciding which agent to delegate a task to.
@@ -643,12 +1163,15 @@ bb-browser site list     # 查看可用 adapter
 
 | 任务类型 | 首选 | 备选 | 原因 |
 |---------|------|------|------|
-| 代码修改/文件操作 | 当前最适合的代码执行者 | 其他可用代码 Agent | 不固定 Codex/Claude 分工，按任务和验证选择 |
-| 代码审查/实现方案 | Codex 或 Claude Code | Hermes 内部 | 可混合使用，避免写死流水线 |
-| 桌面操作/自动化 | 当前桌面控制工具 | 浏览器/CLI 替代路径 | 先确认实时可用性 |
-| 搜索/调研 | 权威源 + 当前可用工具 | Kimi/浏览器/CLI/API | 以可验证和可访问为准 |
-| 分析/决策/方案 | Hermes-internal | 领域 Agent | 需要策略判断力和上下文理解 |
-| 后台常驻任务 | 当前异步 Worker/调度器 | 手动分批执行 | 必须可追踪、可验收 |
+| 代码修改/文件操作 | claude（file_executor） | deepseek-tui | 有 file+terminal，改文件 |
+| 代码审查/实现方案 | codex（代码审查员） | — | 只看不写 |
+| 桌面操作/自动化 | agent-tars（桌面操作员） | openclaw（旧） | 新桌面操作 Agent |
+| 搜索/调研 | openclaw（调研专员） | 浏览器/autocli | 已重新定位为 researcher |
+| 情报监控 | openclaw（情报官） | cron 定时跑 | 同 openclaw 实例，cron 驱动 |
+| 技术预处理+复审 | nesta（技术专员） | claude | 中间层，读项目+写任务包 |
+| 方案策划/文档撰写 | pirlo（方案策划） | — | 纯文职，无 terminal |
+| 分析/决策/方案审核 | hermes-internal（审核角色） | — | readonly，deepseek-v4-pro |
+| 后台常驻任务 | deepseek-worker | 手动分批执行 | mailbobx 异步通信 |
 
 ### 反模式
 

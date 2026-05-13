@@ -20,8 +20,8 @@ tags: [hermes, memory, knowledge-management, obsidian, engineering-cybernetics]
 
 # Hermes 知识架构
 
-> 最后更新: 2026-05-08 (v4 — 对齐 memory + Obsidian 外脑 + skill 分层)
-> 核心原则：Memory 是 always-on 稳定注入层，Skill 是流程库，Obsidian 是外脑和全量持久存储，session_search 是短期会话线索
+> 最后更新: 2026-05-12 (v5 — 新增 Agent-Scoped Skills 架构设计)
+> 核心原则：Memory 是 always-on 稳定注入层，Skill 是流程库，Obsidian 是外脑和全量持久存储，session_search 是短期会话线索。Skill 的未来方向：从全局广播变成按 Agent 角色分发。
 
 ---
 
@@ -102,7 +102,187 @@ tags: [hermes, memory, knowledge-management, obsidian, engineering-cybernetics]
 - **典型可迁移条目**：工具路径、版本号、API 端点、端口配置、已修 bug 详情、一次性环境信息
 - **边界**：不默认自动改写核心记忆；除非用户授权或当前任务明确要求整理。
 
-### 阶段性控制论梳理 Skill
+## Agent-Scoped Skills — 技能系统的进化方向
+
+> **现状问题**：当前 160+ 技能全部全局注入到主 Hermes Agent。Named Agent（deepseek-tui、claude、codex、openclaw、hermes-internal）**完全加载不到任何技能**，等于每次都是白板状态。
+
+### 双向浪费
+
+| 维度 | 主 Agent（Hermes） | Named Agent（deepseek-tui 等） |
+|------|-------------------|-------------------------------|
+| 技能数 | 160+ 全量加载 | 0 个加载 |
+| Token 开销 | 每轮 4K-6K（约 16% 非核心提示词） | 每个子进程额外推理成本（无领域知识） |
+| 认知干扰 | 写代码时出现 baoyu-comic/spotify 等无关描述 | 没有编码规范、debug 路径、流程指导 |
+| 错误率 | 模型可能误加载 partial-match 不相关 skill | 子 Agent 重头摸索流程，常出错 |
+
+### 根因：上下文污染（Context Pollution）
+
+**这是 Agent-Scoped Skills 方案的首要驱动因素，不是 Token 节省。** Token 节省是锦上添花，上下文污染才是用户不用的根本原因。
+
+**什么是上下文污染**：
+1. **执行痕迹污染** — Agent 执行任务时的中间输出（搜索结果摘要、代码报错、403/500 调试信息、终端日志）塞满对话上下文，用户看到的不是干净对话而是\"脏活记录\"
+2. **记忆漂移** — 聊完编码任务后，短期记忆混入技术术语，导致紧接着聊营销方案时 persona 偏移
+3. **领域串台** — 不同领域 skill 描述混在一起，Agent 不知道当前该用哪个 persona
+
+**用户原话**：*\"最大的痛点就是我感觉会被污染，然后它的记忆，它的 Agent 的设定都会被改变。\"*
+
+**设计推论**：只省 Token 不解决污染等于没解决。多 Bot Profile 隔离比单 Bot skill 裁剪更直接——因为它做的是会话级隔离。
+
+### 设计方案
+
+扩展 `agent-registry.json` 中每个 Agent 的 `subagent_profile`，新增 `skills` 字段。具体有三种选型方向（2026-05-12 讨论待定）：
+
+#### 方案 A：双向锁定（agent-registry 白名单 + SKILL.md 标签）
+
+注册文件写死每个 agent 加载哪些 skill，skill 的 frontmatter 加 `agents` 标签做二次匹配。
+
+```json
+"deepseek-tui": {
+  "subagent_profile": {
+    "skills": ["github-code-review", "python-debugpy"]
+  }
+}
+```
+```yaml
+# SKILL.md frontmatter
+agents: [deepseek-tui, claude, codex]
+```
+
+**优点**：双向约束，不易出错。**缺点**：改一个 agent 的 skill 要改两个地方。
+
+#### 方案 B：纯标签驱动（只有 SKILL.md 标签）
+
+每个 skill 的 frontmatter 写 `agents` 列表，agent 启动时自动扫描标签匹配的 skill。
+
+**优点**：单点维护，加新 skill 只要写标签。**缺点**：agent 视角不知道"我应该有哪些 skill"，全靠 skill 自己声明。
+
+#### 方案 C：双向 + 交集校验
+
+skill 声明 `agents`，agent-registry 也声明 `skills`，启动时取交集。冲突时自动告警。
+
+**优点**：最严谨，适合多人协作。**缺点**：复杂度最高。
+
+#### 子 Agent Skill 分配表（初版）
+
+```json
+"deepseek-tui": {
+  ...
+  "subagent_profile": {
+    "toolsets": ["file", "terminal"],
+    "skills": [
+      "github-code-review",
+      "python-debugpy",
+      "nextjs-standalone-deployment",
+      "hermes-tool-input-repair-layer"
+    ],
+    ...
+  }
+}
+```
+
+Skill 本身的 frontmatter 也加 `agents` 标签，声明哪些 Agent 需要它：
+
+```yaml
+---
+name: python-debugpy
+agents: [deepseek-tui, claude, codex]  # 只给编码 Agent
+category: software-development
+---
+```
+
+### 预计效果
+
+| Agent | 加载技能数 | 每轮节省 Token |
+|-------|-----------|---------------|
+| Hermes（主控） | ~8-10 核心 | -4K~6K |
+| deepseek-tui | ~4-6 编码相关 | - |
+| claude | ~4-6 编码相关 | - |
+| openclaw | ~2-3 桌面操作 | - |
+| hermes-internal | ~2-3 分析方法论 | - |
+
+### 优先级分级
+
+Implementation priority（供参考，取决于 Hermes 版本路线图）：
+
+1. **P0** — 在 `agent-registry.json` 的 `subagent_profile` 中新增 `skills` 字段（schema 变更）
+2. **P0** — 给所有现有 SKILL.md frontmatter 加 `agents` 标签
+3. **P1** — 修改 `agent/skill_commands.py`，按 agent 过滤技能加载
+4. **P1** — 修改 `tools/delegate_tool.py`，子 Agent 初始化时加载 scoped skills
+5. **P2** — 主 Agent 白名单化（仅加载核心技能 + 按任务动态注入）
+
+### 已有基建参考
+
+- `channel_skill_bindings`（`config.yaml` 的 feishu 段）— 已支持按频道绑定技能，是技能作用域化的先例
+- `hermes-subagent-delegation` skill — 详细记录了 agent-registry.json 结构和子 Agent 配置
+
+### 完整设计文档
+
+完整的 Agent-Scoped Skills 设计方案（含实现方案分阶段计划、开放式问题、收益估算）已存入 Obsidian wiki：
+
+```markdown
+[[Hermes/Agent-Scoped-Skills-设计提案]]
+```
+
+路径：`3-知识/wiki/AI与Agent/Hermes/Agent-Scoped-Skills-设计提案.md`
+
+### Profile-Level Skills Management
+
+> This is the CURRENT approach (filesystem-level), distinct from the FUTURE Agent-Scoped Skills design above.
+
+### How profiles inherit skills
+
+When created via `hermes profile create <name> --clone`, a profile copies the full skill tree (~155 categories). This is fast but bloated — most sub-agents don't need 90% of them.
+
+### Trimming by role
+
+Each role type needs a different subset. Reference mapping from actual trimming (2026-05-13):
+
+| Role | Keep categories | Example |
+|------|----------------|---------|
+| **总助（马蒂尼）** | Core system + orchestration + content/design + social/info | hermes, devops, creative, research, html-ppt, social-media, kanban-board |
+| **技术专员（内斯塔）** | Technical + system + devops | devops, github, software-development, autonomous-ai-agents, mcp |
+| **方案策划（皮尔洛）** | Content/planning + design + devops | creative, design-brief, html-ppt, web-prototype, devops, huashu-design |
+| **质量审核（安布罗西尼）** | Analysis/review + system | critique, devops, hermes, data-science, research, software-development |
+
+### ⚠️ Critical: Profile skill trimming does NOT reduce prompt tokens for the main agent
+
+**The system injects ALL skills from `~/.hermes/skills/` into the main agent's `<available_skills>` block**, regardless of what's in the profile's skill directory. There is no whitelist/blacklist/filter mechanism in config.yaml.
+
+**Consequence**: Trimming 马蒂尼's profile from 155→38 skills had **zero effect** on prompt token usage. The orchestrator still sees all 65 skills every session. Profile-level trimming only affects session-file scoping but not the prompt injection.
+
+**Implication for design**: If 马蒂尼-as-orchestrator needs to know all skills to delegate correctly, trimming is purely cosmetic. If you truly want token savings, you need either:
+1. A system-level skill whitelist (not yet implemented in Hermes)
+2. Agent-Scoped Skills (see above design doc) — where sub-agents get scoped skills and the main agent gets only core skills
+
+**Current status**: Confirmed 2026-05-13 — the system always injects all skills. No config change can alter this yet. Profile trimming is effectively a no-op for the main agent's context.
+
+### ⚠️ Kanban pitfall: devops category must be available
+
+Every profile that receives kanban tasks must have access to the `kanban-worker` skill, which lives under the `devops` category. If you trimmed `devops` from a profile, kanban dispatcher will crash with:
+
+```
+Error: Unknown skill(s): kanban-worker
+consecutive_crashes=3 | most_recent_outcome=crashed
+```
+
+**Fix**: symlink the global devops directory into the profile's skills:
+
+```bash
+ln -s /Users/gu/.hermes/skills/devops /Users/gu/.hermes/profiles/<profile>/skills/devops
+```
+
+Verify: `hermes -p <profile> --skills kanban-worker -z "hello"`
+
+### Quick overview of category contents
+
+| Category | Contains |
+|----------|----------|
+| `devops` | kanban-worker, kanban-orchestrator |
+| `hermes` | hermes-webui, hermes-knowledge-architecture, hermes-cron-management |
+| `creative` | sketch, pixel-art, comfyui, architecture-diagram, humanizer, claude-design |
+| `software-development` | debugging-hermes-tui-commands, hermes-agent-skill-authoring, python-debugpy, spike, node-inspect-debugger, open-design-ops |
+
+## 阶段性控制论梳理 Skill
 
 当一个阶段结束、完成明显工作量、用户提醒，或某个 skill 连续暴露偏差时，对相关 skill 做一次控制论反馈闭环：
 
@@ -153,6 +333,7 @@ tags: [hermes, memory, knowledge-management, obsidian, engineering-cybernetics]
 
 - For the full migration example, see the session transcript for 2026-05-05 — "Memory 快满了" → created `系统环境配置.md`, freed 1,200+ chars in memory.
 - **[references/2026-05-06-cli-tool-inventory-and-patterns.md](references/2026-05-06-cli-tool-inventory-and-patterns.md)** — Full CLI tool audit: tools I was underusing (lark-cli, gh, tesseract, jq, hermes doctor/insights/logs), correct usage patterns, and iCloud deadlock workaround. Read this for "before going manual, check CLI tools" principle.
+- **[references/2026-05-11-openchronicle-deployment.md](references/2026-05-11-openchronicle-deployment.md)** — OpenChronicle deployment, model configuration via LiteLLM, memory format, symlink redirect to Obsidian, and API key pitfalls.
 
 ---
 

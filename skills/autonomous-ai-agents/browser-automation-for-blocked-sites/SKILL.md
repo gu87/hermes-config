@@ -6,6 +6,8 @@ triggers:
   - need to maintain browser session (cookies, localStorage)
   - website has bot detection that resists CDP clicks
   - HS512 vs HS256 JWT token difference (browser vs curl auth)
+  - Google/ddg-search blocked from terminal (network timeout, 408, empty results)
+  - need structured news search results from cron job / automated research
 ---
 
 # Browser Automation for Sites That Block Curl
@@ -826,6 +828,99 @@ autocli developer github me --json  # Use any of 119 providers
 ```
 
 All tools are generic CLI — not bound to Hermes, Claude Code, or any specific agent.
+
+## Search Engine Fallback: DuckDuckGo via Browser (When Google Is Blocked)
+
+### Core Problem
+Google search is frequently blocked from curl/terminal in Chinese-network environments (timeouts, 408 errors). Standard search tools (`mcp_scrapling_fetch_s_fetch_page` to Google, `curl` to Google) all fail. **DuckDuckGo via browser_navigate works because the browser has a different User-Agent and network path.**
+
+### When to Use
+- Google search via `mcp_scrapling_fetch` times out after 30s+
+- `curl` to Google returns empty or 408 (network layer blocked)
+- You need recent news/trends but have no access to Google News API
+- Background cron jobs that need web research (no user present to troubleshoot)
+
+### Workflow
+
+#### Step 1 — First, try the direct approach anyway (it might work):
+```python
+# scrapling_fetch with basic mode (fastest if it works)
+mcp_scrapling_fetch_s_fetch_page(url="https://www.google.com/search?q=<query>&hl=zh-CN&tbs=qdr:d")
+```
+If timeout or empty → proceed.
+
+#### Step 2 — Navigate to DuckDuckGo with your query via browser:
+```python
+browser_navigate(url="https://duckduckgo.com/?q=<URL-encoded query>&t=h_&ia=web")
+```
+DuckDuckGo's full web interface has much simpler bot detection than Google. It renders reliably in the browser accessibility tree.
+
+#### Step 3 — Filter to news results (key technique):
+The accessibility snapshot includes a navigation bar with tabs: 全部, 图片, 新闻, 视频. Click the "新闻" tab ref from the snapshot:
+```python
+# After browser_navigate:
+snapshot = browser_snapshot()
+# Find the "新闻" / "News" link element ref and click it
+browser_click(ref="e76")  # ref varies per session, use actual from snapshot
+```
+This switches to news-only results, which are structured as article elements with clear headings and timestamps.
+
+#### Step 4 — Extract structured news from browser_snapshot:
+After clicking "新闻", the page structure changes to show articles in a clean format. Each article contains:
+- **heading**: Article headline (clickable)
+- **StaticText**: Source name + time (e.g., "2 days ago" / "Vietnam Investment Review")
+- **link**: Full article URL
+
+Extract via `browser_snapshot().snapshot` — look for these patterns:
+```text
+- heading "Hisense launches FIFA World Cup 2026 campaign" [level=3, ref=...]
+  - StaticText "2 days ago"
+  - StaticText "vir.com.vn"
+```
+
+#### Step 5 — Get more detail by clicking articles:
+For key stories, click the article heading link to navigate to the full article:
+```python
+browser_click(ref="e68")  # Click the article heading
+# Read the full content via browser_snapshot()
+```
+
+#### Step 6 — Scroll for more results:
+```python
+browser_scroll(direction="down")
+```
+DuckDuckGo loads news results in roughly 10-item batches per page.
+
+### Chinese-Language Search (for Chinese-market intelligence)
+DuckDuckGo handles Chinese queries natively. Use the same technique:
+```python
+browser_navigate(url="https://duckduckgo.com/?q=世界杯+营销+品牌+赞助+2026&t=h_&ia=news")
+```
+Switch to "新闻" tab after loading. Chinese news results come from sources like 腾讯网, 21经济网, etc.
+
+⚠️ **Important:** DuckDuckGo may show "找不到关于 <query> 的新闻文章" for obscure Chinese queries — in that case, broaden the query or fall back to web results (click "全部" tab).
+
+### Pitfalls
+- **browser_snapshot element refs are ephemeral**: Each page load generates new refs (@e57, @e68). Never hardcode refs — always read them from the current snapshot.
+- **DuckDuckGo may show "升级到我们的浏览器" banner**: This is just a promotional UI element. Scroll past it — the search results are below.
+- **Time filters don't work via DDG URL parameters**: DDG ignores ?tbs=qdr:d style parameters. Use browser-based tab navigation instead (but DDG's news tab already shows recent results).
+- **Article URLs may be truncated in snapshot**: The URL shown in snapshot ends with "..." for long URLs. Click through to get the real URL.
+- **Some sites behind paywall**: WWD, Forbes, Fast Company articles may be paywalled. Their snippets are still useful for intelligence.
+- **No user present — don't wait for login pages**: In cron job context, if the target article redirects to a login page, just use the snippet from search results.
+
+### Comparison: When to Use DuckDuckGo via Browser vs Other Approaches
+
+| Approach | When to Use | Works on This Env? |
+|----------|-------------|-------------------|
+| **DuckDuckGo via browser** (this section) | Google/curl blocked, need structured news results | ✅ Verified (2026-05-13) |
+| **Trafilatura** (Layer 1 望远镜) | Need article text extraction, known URL | ✅ `trafilatura -u URL --output-format json` |
+| **AutoCLI** (Layer 2 内线) | Need signed-in platform access (Twitter, etc.) | ✅ 119 providers |
+| **bb-browser** (Layer 4 浏览器) | Platform-specific content extraction | ✅ 126 adapters |
+| **curl directly to DDG lite** | Simple search, no JS rendering needed | ⚠️ DDG lite often returns empty in Chinese network |
+| **mcp_scrapling_fetch to DDG** | Quick one-shot fetch | ⚠️ Times out like Google |
+
+### Reference
+→ This technique was verified on 2026-05-13 during a cron job collecting World Cup marketing news. The full session transcript is in session history.
 
 ## Zhipu AI (open.bigmodel.cn) Specifics
 → Persistent Chrome CDP setup via launchd: `references/chrome-cdp-persistence-launchd.md`

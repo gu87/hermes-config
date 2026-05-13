@@ -97,8 +97,44 @@ lark-cli api POST /open-apis/im/v1/messages \
 
 | Bot | app_id | open_id | 凭证来源 | 查询方法 |
 |-----|--------|---------|---------|---------|
-| 马尔蒂尼 (Gateway) | `cli_a94fbfdef7e31ccb` | `ou_b455ec67f11b87a1befdc2c8326c5717` | `~/.hermes/.env` | 直接 API（见 `references/add-bot-to-group.md`） |
-| 内斯塔 (lark-cli) | `cli_a9434df9ad3a1cb6` | `ou_d4d4bcffd234aa177b1458ae0381934c` | `~/.lark-cli/config.json` + Keychain | `lark-cli api GET /open-apis/bot/v3/info` |
+| 马尔蒂尼 (Gateway) | `cli_a94fbfdef7e31ccb` | `ou_b455ec67f11b87a1befdc2c8326c5717` | ~/.hermes Feishu Bot (主) | `~/.hermes/.env` → `FEISHU_APP_ID/SECRET` | 主 Gateway 进程 |
+| 内斯塔 (lark-cli / Hermes Profile) | `cli_a9434df9ad3a1cb6` | `ou_d4d4bcffd234aa177b1458ae0381934c` | ~/.hermes/profiles/nesta Feishu Bot | `~/.lark-cli/config.json` + Keychain 或 `~/.hermes/profiles/nesta/.env` | Hermes profile `nesta` / lark-cli |
+
+> 内斯塔 Bot 原本由 OpenClaw 管理，2026-05-13 迁移到独立 Hermes Profile `nesta`。迁移时必须确保 OpenClaw 的 feishu channel 已禁用，否则两个 WebSocket 客户端同时连接同一个飞书 Bot 会导致消息被 OpenClaw 拦截。
+
+## §G — 多 Gateway 进程管理
+
+当多个 Hermes Profile 各自运行独立的 Gateway 进程时（如主网关 + 内斯塔 + 皮尔洛），需注意以下事项：
+
+### 进程识别
+
+```bash
+# 查看所有 Hermes Gateway 进程
+ps aux | grep "hermes.*gateway" | grep -v grep
+
+# 区分不同 Profile
+# 主网关：hermes gateway run --replace  （或 -m hermes_cli.main gateway run）
+# 内斯塔：hermes -p nesta gateway run --replace
+# 皮尔洛：hermes -p piero gateway run --replace
+```
+
+### 冲突预防
+
+| 资源 | 冲突条件 | 解决方法 |
+|------|---------|---------|
+| api_server 端口 | 默认 8642，所有 Profile 争夺同一端口 | 在 config.yaml 中设置 `platforms.api_server.port` 为不同值（如 8643, 8644），或直接禁用 api_server |
+| 飞书 Bot 长连接 | 同一个 Bot 的 app_id 不允许同时建立两个 WebSocket | 确保 OpenClaw 和 Hermes Gateway 不会同时连接同一个 Bot |
+
+### 端口配置
+
+```yaml
+# ~/.hermes/profiles/<name>/config.yaml
+platforms:
+  api_server:
+    port: 8643  # 各 Profile 使用不同端口
+    # 或完全禁用
+    # enabled: false
+```
 
 > 完整拉 bot 进群流程见 [`references/add-bot-to-group.md`](./references/add-bot-to-group.md)
 

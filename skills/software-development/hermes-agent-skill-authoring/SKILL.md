@@ -124,6 +124,24 @@ Pick the closest existing category. Don't invent new top-level categories casual
 5. **Git add + commit** on the active branch.
 6. **Note:** the CURRENT session's skill loader is cached — `skill_view` / `skills_list` will not see the new skill until a new session. This is expected, not a bug.
 
+## Advanced References for Skill Quality
+
+See `references/nuwa-skill-methodology.md` for an advanced skill-creation methodology from the [nuwa-skill](https://github.com/alchaincyf/nuwa-skill) project (18.3k⭐). It covers multi-agent parallel research, five-layer cognitive extraction, triple-verified quality gates, and a darwin-skill for continuous evolution. Useful as inspiration when crafting high-quality skills that go beyond surface-level instructions.
+
+## Distilling User Expertise (Nuwa + Darwin Pipeline)
+
+When the user wants to create a skill from their OWN professional experience (not a public figure), DO NOT manually craft the skill. Instead:
+
+1. **Install Nuwa + Darwin** via Claude Code: `npx skills add alchaincyf/nuwa-skill` + `npx skills add alchaincyf/darwin-skill`
+2. **Scan素材** via OpenClaw (Desktop, Documents, work folders — marketing plans, strategy docs, meeting notes, 复盘)
+3. **Delegate to Claude Code** to run Nuwa distillation on the素材
+4. **Feed output back** — Nuwa generates a SKILL.md with five-layer structure (mental models, decision heuristics, expression DNA, anti-patterns, honest boundaries)
+5. **Evolve with Darwin** — each new素材 batch triggers a round; ratchet mechanism keeps only improvements
+
+See `references/nuwa-skill-methodology.md` section "Practical Workflow: Distilling User's Own Expertise" for the full pipeline with commands and phase details.
+
+**Pitfall:** If you start manually writing a skill for the user's own expertise when Nuwa exists, the user will correct you. Always check for available automation first.
+
 ## Cross-Referencing Other Skills
 
 `metadata.hermes.related_skills` unions both trees (`skills/` in-repo and `~/.hermes/skills/`) at load time. You CAN reference a user-local skill from an in-repo skill, but it won't resolve for other users who clone the repo fresh. Prefer referencing only in-repo skills from in-repo skills. If a frequently-referenced skill lives only in `~/.hermes/skills/`, consider promoting it to the repo.
