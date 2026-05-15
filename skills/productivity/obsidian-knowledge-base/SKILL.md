@@ -2,6 +2,7 @@
 name: obsidian-knowledge-base
 description: "Obsidian 知识库文件操作规范 — 文件归类和存放规则。用户 Gu 的个人知识库 + 懂球帝工作库的双 vault 管理。"
 tags: [obsidian, knowledge-management, productivity, file-organization]
+agents: [hermes]
 ---
 
 # Obsidian 知识库操作规范

@@ -8,6 +8,7 @@ metadata:
   hermes:
     tags: [sketch, mockup, design, ui, prototype, html, variants, exploration, wireframe, comparison]
     related_skills: [spike, claude-design, popular-web-designs, excalidraw]
+agents: [pirlo]
 ---
 
 # Sketch

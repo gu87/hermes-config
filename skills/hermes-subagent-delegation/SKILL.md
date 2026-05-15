@@ -3,6 +3,7 @@ name: hermes-subagent-delegation
 description: "子Agent（Named Agent / delegation）配置与排障 — agent-registry.json、config.yaml delegation段、toolsets隔离、模型继承"
 tags: [hermes, subagent, delegation, troubleshooting]
 category: hermes
+agents: [hermes, nesta]
 ---
 
 # Hermes 子Agent Delegation 配置与排障
@@ -767,7 +768,26 @@ grep -E "keepalive ping timeout|reconnect|NameResolutionError" ~/.hermes/logs/ga
 
 **性质**：系统/网络层问题，非配置可修复。可尝试切换公共 DNS 或 /etc/hosts 硬编码缓解。
 
-### 14. Kanban 看板系统（已接入）
+### 14. 批量 YAML frontmatter 编辑：子 Agent 的脆弱区
+
+**问题**：让子 Agent（特别是 Claude Code）批量编辑 YAML frontmatter 文件（如给 50+ SKILL.md 加字段）高度不可靠。子 Agent 的 YAML 解析/重写逻辑容易出错，导致：
+- frontmatter 缩进层级错乱（`agents:` 插入到子层级而非根层级）
+- frontmatter 整体被删除（正则匹配失败导致写回空 frontmatter）
+- 文件被批量损坏，需要 git 恢复
+
+**真实案例（2026-05-15 Agent-Scoped Skills Phase 1）**：Claude Code 用 Python 脚本批量处理 53 个 SKILL.md，第一次写错了缩进，第二次修复脚本的正则把全部 frontmatter body 删除了。57 个文件损坏，全部通过 `git checkout -- skills/` 恢复。
+
+**推荐做法**：
+- **结构化批量 frontmatter 编辑**：由你（主控）直接写 `execute_code` 做 Python 字符串操作，不要在 frontmatter 上做 YAML 解析——直接用 `re.match` + 纯字符串插入
+- **如果必须委托**：给子 Agent 一个精确的 Python 脚本（不是让它自己写），在本地先测试 1 个文件再批量
+- **回滚准备**：批量操作前先 `git add && git stash` 或确保 git clean 可恢复
+- **不用 YAML 库**：frontmatter 是 Markdown 的 YAML 块，用 `re` 正则读取写入比 YAML 解析库更安全
+
+**SKILL.md agents 字段约定**（Agent-Scoped Skills 实施后）：
+- 所有 SKILL.md frontmatter 必须有 `agents: [...]` 字段，声明此 skill 对哪些 Agent 可见
+- 未声明 `agents` 的 skill → 默认对所有 Agent 不可见（安全默认）
+- 新增 skill 时：加 SKILL.md → 写 `agents` 标签 → 决定是否更新 `agent-registry.json` 中对应 agent 的 `skills` 数组
+- agents 标签值必须匹配 `agent-registry.json` 中的 agent `id` 字段
 
 **状态**：Hermes 内置的 Kanban 任务板已接入「懂球帝营销中心」看板，运行端到端链路已验证通过。
 

@@ -3,6 +3,7 @@ name: hermes-webui
 description: Install, manage, and troubleshoot the Hermes Web UI (github.com/nesquena/hermes-webui) — a dark-themed browser interface with full CLI parity for Hermes Agent.
 tags: [hermes, webui, dashboard, self-hosted]
 category: hermes
+agents: [hermes]
 ---
 
 # Hermes Web UI — Setup & Operations

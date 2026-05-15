@@ -9,6 +9,7 @@ metadata:
   hermes:
     tags: [architecture, diagrams, SVG, HTML, visualization, infrastructure, cloud]
     related_skills: [concept-diagrams, excalidraw]
+agents: [pirlo]
 ---
 
 # Architecture Diagram Skill

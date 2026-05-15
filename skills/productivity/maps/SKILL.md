@@ -10,6 +10,7 @@ metadata:
     category: productivity
     requires_toolsets: [terminal]
     supersedes: [find-nearby]
+agents: [hermes]
 ---
 
 # Maps Skill

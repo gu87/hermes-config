@@ -2,6 +2,7 @@
 name: obscura-headless-browser
 description: Obscura — Rust 写的轻量 headless 浏览器，用于网页抓取和数据提取。57MB 二进制，30MB 内存，V8 引擎，CDP 协议兼容。安装于 ~/bin/obscura。补充 Chrome 而非替代。
 tags: [obscura, headless, browser, web-scraping, cdp, rust]
+agents: [deepseek-tui, codex]
 ---
 
 # Obscura 使用手册

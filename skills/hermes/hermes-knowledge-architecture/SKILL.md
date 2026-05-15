@@ -16,6 +16,7 @@ triggers:
   - 档案原则
   - 控制论梳理 skill
 tags: [hermes, memory, knowledge-management, obsidian, engineering-cybernetics]
+agents: [hermes]
 ---
 
 # Hermes 知识架构

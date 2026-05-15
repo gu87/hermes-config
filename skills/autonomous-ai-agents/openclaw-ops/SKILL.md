@@ -3,6 +3,7 @@ name: openclaw-ops
 description: OpenClaw (ArkClaw/Gateway) 运维操作 — 配置修复、状态检查、常见报错处理、exec 权限管理。OpenClaw 是 builderz-labs/mission-control 的核心网关组件，跑在端口 18789。
 tags: [openclaw, gateway, builderz, agentic]
 category: autonomous-ai-agents
+agents: [openclaw]
 ---
 
 # OpenClaw 运维手册

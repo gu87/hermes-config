@@ -2,6 +2,7 @@
 name: playwright-mcp
 description: Playwright MCP — 自动化浏览器测试工具。Codex 用它在验收代码时跑端到端测试，模拟用户操作，检查页面交互是否正常。
 tags: [testing, automation, e2e, playwright, code-review]
+agents: [deepseek-tui, claude, codex]
 ---
 
 # Playwright MCP — 自动化验收测试

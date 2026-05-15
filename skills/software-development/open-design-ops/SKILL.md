@@ -10,6 +10,7 @@ triggers:
   - claude design alternative
   - html ppt generation
   - html deck generation
+agents: [deepseek-tui, claude, codex, nesta]
 ---
 
 # Open Design Ops

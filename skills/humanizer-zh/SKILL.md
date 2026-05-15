@@ -2,6 +2,7 @@
 name: humanizer-zh
 description: 中文 AI 文本润色工具。把 AI 生成的营销文案、方案初稿、社媒内容变得更通顺、更像「人话」。去掉 AI 腔、冗余连接词、僵硬句式，保留核心信息。
 tags: [chinese, copywriting, polish, humanize, content]
+agents: [pirlo, hermes-internal]
 ---
 
 # Humanizer-zh — 中文 AI 文本润色

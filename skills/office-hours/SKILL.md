@@ -2,6 +2,7 @@
 name: office-hours
 description: 任务前六问检查清单。收到模糊任务时，先问六个问题把目标、受众、衡量标准、约束条件、已有资料、优先级理清楚，降低返工率。
 tags: [clarification, planning, workflow, productivity]
+agents: [hermes]
 ---
 
 # Office Hours — 六问检查清单

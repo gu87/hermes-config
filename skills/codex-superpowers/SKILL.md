@@ -2,6 +2,7 @@
 name: codex-superpowers
 description: Codex 代码审查质量规范。审查代码时强制检查测试覆盖、错误处理、边界条件、安全漏洞。确保交付的代码符合工程标准。
 tags: [code-review, quality, testing, engineering]
+agents: [codex, nesta, ambrosini]
 ---
 
 # Codex Superpowers — 代码审查质量规范
