@@ -10,6 +10,7 @@ metadata:
     related_skills: [github-repo-management]
 prerequisites:
   commands: [pygount]
+agents: [deepseek-tui, claude, codex, nesta]
 ---
 
 # Codebase Inspection with pygount

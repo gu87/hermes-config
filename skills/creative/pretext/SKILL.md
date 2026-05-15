@@ -8,6 +8,7 @@ metadata:
   hermes:
     tags: [creative-coding, typography, pretext, ascii-art, canvas, generative, text-layout, kinetic-typography]
     related_skills: [p5js, claude-design, excalidraw, architecture-diagram]
+agents: [pirlo]
 ---
 
 # Pretext Creative Demos

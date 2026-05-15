@@ -10,6 +10,7 @@ metadata:
   hermes:
     tags: [spotify, music, playback, playlists, media]
     related_skills: [gif-search]
+agents: [hermes]
 ---
 
 # Spotify

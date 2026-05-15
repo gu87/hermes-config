@@ -8,6 +8,7 @@ metadata:
   hermes:
     tags: [GitHub, Pull-Requests, CI/CD, Git, Automation, Merge]
     related_skills: [github-auth, github-code-review]
+agents: [deepseek-tui, claude, codex, nesta]
 ---
 
 # GitHub Pull Request Workflow

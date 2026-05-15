@@ -2,6 +2,7 @@
 name: github-repo-risk-assessment
 description: 在决定部署/集成一个 GitHub 项目之前，系统性地从 README、issues、commits、环境、端口冲突五个维度评估风险。形成结构化报告，给出部署难度、已知风险、兼容性结论。
 category: github
+agents: [deepseek-tui, claude, codex, nesta]
 ---
 
 # GitHub 仓库风险评估

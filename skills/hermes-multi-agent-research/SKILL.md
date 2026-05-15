@@ -2,6 +2,7 @@
 name: hermes-multi-agent-research
 description: "UMBRELLA: 多Agent研究确认 + Agent路由决策 + Claude Code委托协议 + 常驻Worker + GitHub调研 + 竞品情报研究 + Web工具链。合并了 agent-routing-guide 和 hermes-claude-code-delegation。"
 category: autonomous-ai-agents
+agents: [hermes, nesta]
 ---
 
 # Hermes 多Agent研究确认执行工作流 + 委托模式（UMBRELLA）

@@ -8,6 +8,7 @@ triggers:
   - HS512 vs HS256 JWT token difference (browser vs curl auth)
   - Google/ddg-search blocked from terminal (network timeout, 408, empty results)
   - need structured news search results from cron job / automated research
+agents: [openclaw, agent-tars]
 ---
 
 # Browser Automation for Sites That Block Curl

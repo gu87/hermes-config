@@ -4,6 +4,7 @@ description: Decomposition playbook + specialist-roster conventions + anti-tempt
 tags: [kanban, multi-agent, orchestration, routing]
 category: devops
 related_skills: [kanban-worker]
+agents: [hermes]
 ---
 
 # Kanban Orchestrator — Decomposition Playbook

@@ -2,6 +2,7 @@
 name: hermes-tool-input-repair-layer
 description: "Hermes Agent 工具输入修复层（Tool Input Repair Layer）— 解决开源模型工具调用中的重复错误"
 tags: [tool-calling, repair, harness-engineering, deepseek]
+agents: [deepseek-tui, claude, codex, nesta]
 ---
 
 # Tool Input Repair Layer

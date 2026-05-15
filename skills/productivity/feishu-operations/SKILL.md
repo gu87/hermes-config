@@ -13,6 +13,7 @@ triggers:
   - lark-cli
 tags: [feishu, lark, productivity, cli]
 category: productivity
+agents: [hermes]
 ---
 
 # 飞书操作集

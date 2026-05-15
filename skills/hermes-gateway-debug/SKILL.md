@@ -3,6 +3,7 @@ name: hermes-gateway-debug
 description: "Hermes Gateway 飞书连接断开排查 + 飞书API Permission排查。UMBRELLA: 合并了 feishu-permission-debug。"
 tags: [hermes, gateway, feishu, troubleshooting]
 category: hermes-multi-agent-research
+agents: [hermes, nesta]
 ---
 
 # Hermes Gateway 排障指南

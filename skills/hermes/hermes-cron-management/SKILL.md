@@ -2,6 +2,7 @@
 name: hermes-cron-management
 description: Hermes Agent cron job lifecycle — create, update, troubleshoot, and ensure scheduled tasks fire correctly. Covers the cronjob tool API, Gateway dependency, environment setup, and common failure modes.
 tags: [hermes, cron, scheduler, automation]
+agents: [hermes]
 ---
 
 # Hermes Cron Job Management

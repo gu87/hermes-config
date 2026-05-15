@@ -10,6 +10,7 @@ metadata:
     category: creative
     homepage: https://github.com/blader/humanizer
     related_skills: [songwriting-and-ai-music]
+agents: [pirlo]
 ---
 
 # Humanizer: Remove AI Writing Patterns
