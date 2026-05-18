@@ -27,7 +27,7 @@ agents: [hermes, nesta]
 - `blocked_tools` — 显式禁用的工具。`terminal` 默认有时在 blocked_tools 中
 - `isolation` — `"readonly"` 会剥离写工具集，建议 `"shared"`
 - `permission_mode` — `"read_only"` 限制工具权限，建议 `"ask"`
-- `skills` — ⚠️ **当前缺失**：subagent_profile 还没有 skills 字段，所有 Named Agent 加载不到任何技能（纯白板状态）。详见 `hermes-knowledge-architecture` skill 中的「Agent-Scoped Skills」设计文档
+- `skills` — 子 Agent 可用的 skill 白名单。代码已支持 `subagent_profile.skills`，但 2026-05-18 的 live registry 尚未给各 Agent 填充该字段；当前不要假设 registry 白名单已经完整启用。详见 `hermes-knowledge-architecture` skill 中的「Agent-Scoped Skills」状态说明。
 
 ```bash
 cat ~/.hermes/config/agent-registry.json | jq '.agents.kimi'
@@ -784,9 +784,9 @@ grep -E "keepalive ping timeout|reconnect|NameResolutionError" ~/.hermes/logs/ga
 - **不用 YAML 库**：frontmatter 是 Markdown 的 YAML 块，用 `re` 正则读取写入比 YAML 解析库更安全
 
 **SKILL.md agents 字段约定**（Agent-Scoped Skills 实施后）：
-- 所有 SKILL.md frontmatter 必须有 `agents: [...]` 字段，声明此 skill 对哪些 Agent 可见
+- 所有 SKILL.md frontmatter 必须有 `agents: [...]` 字段，声明此 skill 预期对哪些 Agent 可见
 - 未声明 `agents` 的 skill → 默认对所有 Agent 不可见（安全默认）
-- 新增 skill 时：加 SKILL.md → 写 `agents` 标签 → 决定是否更新 `agent-registry.json` 中对应 agent 的 `skills` 数组
+- 当前 `agents` 标签主要表达 **intended visibility**（预期可见性），并非运行时硬拦截。严格的 registry 双向白名单（`agent-registry.json` 中 `subagent_profile.skills` 数组 ↔ SKILL.md 中 `agents` 标签交叉校验）要等各 Agent 的 `subagent_profile.skills` 字段全部填充后才算完整启用；当前 live registry 尚未批量填充该数组
 - agents 标签值必须匹配 `agent-registry.json` 中的 agent `id` 字段
 
 **状态**：Hermes 内置的 Kanban 任务板已接入「懂球帝营销中心」看板，运行端到端链路已验证通过。

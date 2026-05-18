@@ -21,8 +21,8 @@ agents: [hermes]
 
 # Hermes 知识架构
 
-> 最后更新: 2026-05-12 (v5 — 新增 Agent-Scoped Skills 架构设计)
-> 核心原则：Memory 是 always-on 稳定注入层，Skill 是流程库，Obsidian 是外脑和全量持久存储，session_search 是短期会话线索。Skill 的未来方向：从全局广播变成按 Agent 角色分发。
+> 最后更新: 2026-05-18 (v7 — 增加 authority map；校准 Agent-Scoped Skills 当前状态)
+> 核心原则：Memory 是 always-on 稳定注入层，Skill 是流程库，Obsidian 是外脑和全量持久存储，session_search 是短期会话线索。当前主 Agent 有核心 skill 白名单；子 Agent 的 registry `skills` 白名单机制已被代码支持，但 live registry 尚未填充显式 skills 数组。
 
 ---
 
@@ -103,11 +103,55 @@ agents: [hermes]
 - **典型可迁移条目**：工具路径、版本号、API 端点、端口配置、已修 bug 详情、一次性环境信息
 - **边界**：不默认自动改写核心记忆；除非用户授权或当前任务明确要求整理。
 
-## Agent-Scoped Skills — 技能系统的进化方向
+## Agent-Scoped Skills — 部分落地，待补 registry 白名单（2026-05-18 校准）
 
-> **现状问题**：当前 160+ 技能全部全局注入到主 Hermes Agent。Named Agent（deepseek-tui、claude、codex、openclaw、hermes-internal）**完全加载不到任何技能**，等于每次都是白板状态。
+> **状态：代码能力已支持，当前配置未完全启用 registry 白名单**
+> 设计目标仍是方案 A 双向锁定（agent-registry 白名单 + SKILL.md 标签双重过滤）。
+> 当前 live registry `/Users/gu/.hermes/config/agent-registry.json` 尚未给各 Agent 填充 `subagent_profile.skills` 数组，所以不能把现状描述为「registry 白名单已完全落地」。
+> 实施详情见 Obsidian wiki：[[Hermes/Agent-Scoped-Skills-设计提案]]
 
-### 双向浪费
+### 解决的问题
+
+之前所有 Agent 全量加载 65+ skill（92 条记录），子 Agent 0 skill 白板启动。目标效果：
+
+| Agent | 之前 | 之后 |
+|-------|------|------|
+| Hermes（主控） | 92 全量（~2K-3K token/轮） | **8 核心 skill** |
+| deepseek-tui / claude / codex | 0（白板） | 4-7 编码类 |
+| openclaw | 0（白板） | 3 调研/浏览器类 |
+| pirlo | 0（白板） | 3 设计类 |
+| nesta | 0（白板） | 5 技术分析类 |
+
+### 当前实现机制
+
+1. `SKILL.md` frontmatter → `agents: [...]` 标签，声明 intended visibility
+2. `agent/prompt_builder.py` → `_skill_matches_agent()` 过滤 + `build_skills_system_prompt(agent_id=...)`
+3. `HERMES_CORE_SKILLS` 常量 → 主 Agent 只显示核心 skill
+4. `agent-registry.json` → 代码支持读取每个 Agent 的 `subagent_profile.skills` 白名单，但当前 live registry 尚未填充该字段
+5. `tools/delegate_tool.py` → 如果 registry 中存在 `profile.skills`，子 Agent 启动时会注入 scoped skills + `skills` 工具集
+
+### 代码文件
+
+- `~/.hermes/hermes-agent/agent/skill_utils.py` — `extract_skill_agents()` + `get_agent_profile_skills()`
+- `~/.hermes/hermes-agent/agent/prompt_builder.py` — `_skill_matches_agent()` + `build_skills_system_prompt(agent_id=...)`
+- `~/.hermes/hermes-agent/tools/delegate_tool.py` — `_build_child_agent()` skills 注入
+- `~/.hermes/hermes-agent/tests/agent/test_skill_scoping.py` — 32 个测试
+
+### 新增 Skill 标准流程
+
+以后新增 SKILL.md 时：
+
+1. 写 SKILL.md（正常写，name 字段作为匹配 key）
+2. 在 frontmatter 末尾加 `agents: [hermes]`（默认主 Agent 用）
+3. 只有确定子 Agent 也该用时，才规划更新 `agent-registry.json` 中对应 Agent 的 `skills` 数组；当前先保持标签驱动和文档校准，不批量填白名单
+
+仅改 SKILL.md 通常不需要重启 gateway；修改 `agent-registry.json` 后按 delegation skill 的规则重启相关 gateway。
+
+### 设计历史
+
+以下为原始设计方案记录，供参考：
+
+#### 背景问题
 
 | 维度 | 主 Agent（Hermes） | Named Agent（deepseek-tui 等） |
 |------|-------------------|-------------------------------|
@@ -245,17 +289,15 @@ Each role type needs a different subset. Reference mapping from actual trimming 
 | **方案策划（皮尔洛）** | Content/planning + design + devops | creative, design-brief, html-ppt, web-prototype, devops, huashu-design |
 | **质量审核（安布罗西尼）** | Analysis/review + system | critique, devops, hermes, data-science, research, software-development |
 
-### ⚠️ Critical: Profile skill trimming does NOT reduce prompt tokens for the main agent
+### ⚠️ Profile skill trimming vs Agent-Scoped Skills 的区别
 
-**The system injects ALL skills from `~/.hermes/skills/` into the main agent's `<available_skills>` block**, regardless of what's in the profile's skill directory. There is no whitelist/blacklist/filter mechanism in config.yaml.
+**Profile-level trimming**（通过 `hermes profile create --clone` + 删减 profile 下的 skill 目录）对主 Agent 的 prompt token **没有效果**——系统始终从 `~/.hermes/skills/` 全量注入。这是 by design：主控（马蒂尼）需要看到所有 skill 才能正确派发。
 
-**Consequence**: Trimming 马蒂尼's profile from 155→38 skills had **zero effect** on prompt token usage. The orchestrator still sees all 65 skills every session. Profile-level trimming only affects session-file scoping but not the prompt injection.
+**真正起效的是 Agent-Scoped Skills**（当前为代码支持 + 主 Agent 白名单，子 Agent registry 白名单待补）：
+- 主 Agent（Hermes）只加载 8 个核心 skill（`HERMES_CORE_SKILLS`）
+- 子 Agent 目前主要依赖 SKILL.md 的 `agents` 标签表达意图；只有在 registry 补齐 `subagent_profile.skills` 后，才是严格双向过滤
 
-**Implication for design**: If 马蒂尼-as-orchestrator needs to know all skills to delegate correctly, trimming is purely cosmetic. If you truly want token savings, you need either:
-1. A system-level skill whitelist (not yet implemented in Hermes)
-2. Agent-Scoped Skills (see above design doc) — where sub-agents get scoped skills and the main agent gets only core skills
-
-**Current status**: Confirmed 2026-05-13 — the system always injects all skills. No config change can alter this yet. Profile trimming is effectively a no-op for the main agent's context.
+所以结论：**别折腾 profile 裁剪省 token，那没效果。Agent-Scoped Skills 的 `build_skills_system_prompt(agent_id=...)` 才是正确的路径**。
 
 ### ⚠️ Kanban pitfall: devops category must be available
 
