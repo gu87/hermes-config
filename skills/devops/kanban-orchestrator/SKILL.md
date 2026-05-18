@@ -56,7 +56,24 @@ Create Kanban tasks when any of these are true:
 
 If *none* of those apply — it's a small one-shot reasoning task — use `delegate_task` instead or answer the user directly.
 
-## The anti-temptation rules
+## User preference: step-by-step review before proceeding
+
+The user (Gu) has explicitly established that **early-stage tasks must have per-step human review** before proceeding to the next step. Not "build everything → show final → iterate".
+
+This is a tunable, not a binary choice:
+
+| Phase | Review density | Behavior |
+|-------|---------------|----------|
+| Early (first 1-2 runs) | Full manual | Push summary to user after each completed task, wait for confirmation before next |
+| Mid (familiar) | Key gate review | Auto-advance intermediate steps, only gate on final delivery |
+| Mature | Full auto | Auto-execute chain, only notify on exceptions |
+
+**Implementing this:**
+- Each kanban task's `complete()` summary should be sent to the user as a digest
+- The user's response of "继续" / "确认" is the signal to dispatch the next ready task
+- Do NOT dispatch all ready tasks immediately — wait for user sign-off on the previous stage
+
+**Pitfall:** Chaining 6 tasks and dispatching them all at once violates this principle even if they're technically dependent (parents→children). The user wants to SEE task 1's output before task 2 starts, not just know task 1 finished.
 
 Your job description says "route, don't execute." The rules that enforce that:
 
@@ -187,6 +204,42 @@ kanban_complete(
 **Same-profile queue:** 50 tasks, all assigned to `translator`, no dependencies between them. Dispatcher serializes.
 
 **Human-in-the-loop:** Any task can `kanban_block()` to wait for input. Dispatcher respawns after `/unblock`.
+
+## Adjustable review density (progressive autonomy)
+
+Not all pipelines need the same level of human review. Implement a three-phase model controlled by the user:
+
+| Phase | Review density | When |
+|---|---|---|
+| **Phase 1: Full manual** | Every task completion → push summary to user → user confirms before next task starts | First 1-2 runs of a new workflow |
+| **Phase 2: Key-node** | Only at logical gates (e.g. "research complete → ready to generate", "build complete → ready to deploy") | User is familiar with workflow quality |
+| **Phase 3: Auto** | Full pipeline runs autonomously. Notify user only on exception (blocked, error, result) | Workflow is mature and trusted |
+
+### Orchestrator behavior per phase
+
+**Phase 1:**
+- After each task completes (`kanban_complete`), present a short summary to the user in-channel before the next task auto-promotes
+- Include: what was found/done, key decisions made, what the next step will do
+- Wait for explicit "继续" or "go" before dispatching the next ready task
+- Do NOT bundle multiple tasks into one update
+
+**Phase 2:**
+- Tasks auto-advance within a phase (e.g. T2 research → T3 research → T4 synthesis all auto)
+- Pause and present summary only at phase boundaries (research done → ready for generation)
+- Let the dispatcher run freely; intervene only at gates
+
+**Phase 3:**
+- Full auto. Dispatcher runs everything. Only surface errors, blocks, and final results.
+
+### Pitfall: don't pre-execute the whole pipeline
+
+Doing all the work yourself then presenting the final artifact for review is the orchestrator's cardinal sin. By the time the user sees a problem, 100% of the effort is consumed and rewinding is expensive. Decompose into a Kanban chain instead — each task small enough that a "stop, that's wrong" has minimal sunk cost.
+
+## 🎯 Cardinal rule: don't pre-execute the whole pipeline (this is THE orchestrator sin)
+
+**The single most expensive mistake you can make**: doing all the work yourself, then presenting the finished artifact for review. By the time the user spots a problem, 100% of the effort has been consumed and rewinding is expensive.
+
+**Always decompose into a Kanban chain instead.** Each task should be small enough that a "stop, that's wrong" has minimal sunk cost.
 
 ## Common pitfalls
 

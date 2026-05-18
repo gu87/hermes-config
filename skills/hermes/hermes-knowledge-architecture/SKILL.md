@@ -173,9 +173,9 @@ agents: [hermes]
 
 **设计推论**：只省 Token 不解决污染等于没解决。多 Bot Profile 隔离比单 Bot skill 裁剪更直接——因为它做的是会话级隔离。
 
-### 设计方案
+### 设计方案（已实施）
 
-扩展 `agent-registry.json` 中每个 Agent 的 `subagent_profile`，新增 `skills` 字段。具体有三种选型方向（2026-05-12 讨论待定）：
+扩展 `agent-registry.json` 中每个 Agent 的 `subagent_profile`，新增 `skills` 字段。以下为历史参考，实际已选择方案 A 并落地。
 
 #### 方案 A：双向锁定（agent-registry 白名单 + SKILL.md 标签）
 
@@ -376,7 +376,8 @@ Verify: `hermes -p <profile> --skills kanban-worker -z "hello"`
 
 - For the full migration example, see the session transcript for 2026-05-05 — "Memory 快满了" → created `系统环境配置.md`, freed 1,200+ chars in memory.
 - **[references/2026-05-06-cli-tool-inventory-and-patterns.md](references/2026-05-06-cli-tool-inventory-and-patterns.md)** — Full CLI tool audit: tools I was underusing (lark-cli, gh, tesseract, jq, hermes doctor/insights/logs), correct usage patterns, and iCloud deadlock workaround. Read this for "before going manual, check CLI tools" principle.
-- **[references/2026-05-11-openchronicle-deployment.md](references/2026-05-11-openchronicle-deployment.md)** — OpenChronicle deployment, model configuration via LiteLLM, memory format, symlink redirect to Obsidian, and API key pitfalls.
+- **[references/2026-05-15-agent-scoped-skills-implementation-pitfalls.md](references/2026-05-15-agent-scoped-skills-implementation-pitfalls.md)** — Batch SKILL.md frontmatter modification pitfalls: safe vs unsafe patterns for YAML frontmatter editing, JSON modification strategy, multi-repo management.
+- **[references/2026-05-15-mcp-audit-workflow.md](references/2026-05-15-mcp-audit-workflow.md)** — Full-system MCP inventory audit: how to check Hermes/Claude Code/DeepSeek TUI/npm/uv/pip for all MCP servers, version checking, and cleanup.
 
 ---
 

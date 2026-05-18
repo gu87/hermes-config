@@ -663,7 +663,47 @@ echo '{}' > ~/.openclaw/.openclaw/agents/main/sessions/sessions.json
 - 清空后 OpenClaw Gateway 无需重启，已缓存的连接（如飞书长连）会直接创建新会话
 - 如果想同时重置当前上下文（避免旧对话内容影响新任务），可以顺便重启 Gateway：`openclaw gateway restart`
 
-## 与 Hermes 通信（Mailbox 协议）
+## Hermes 中 OpenClaw 的工具集要求（agent-registry.json）
+
+OpenClaw 不仅有自己的配置文件（`~/.openclaw/openclaw.json`），作为 Hermes Named Agent，它还通过 `~/.hermes/config/agent-registry.json` 配置 delegate_task 时的 toolsets。
+
+**默认 toolsets 为 `["terminal", "file"]`**，只能运行命令和读写文件，不能搜网页、不能看图。当需要 OpenClaw 完成以下任务时，必须先在 agent-registry.json 中添加 `"web"` 和 `"browser"` 工具集：
+
+| 任务类型 | 需要工具集 | 原因 |
+|---------|-----------|------|
+| 搜索历史照片做对比 | `web`, `browser` | 需要 web_search + browser_navigate |
+| 调研/竞品分析 | `web`, `browser` | 需要搜索+浏览网页 |
+| 下载图片/文件 | `web`, `browser`, `terminal` | browser 看图，curl 下载 |
+| 纯文本分析/报告 | `file`, `terminal` | 默认就够了 |
+
+**配置修改方法：**
+```bash
+# 改 ~/.hermes/config/agent-registry.json → openclaw → subagent_profile → toolsets
+# 改为 ["terminal", "file", "web", "browser"]
+# 然后重启 gateway
+hermes gateway run --replace
+```
+
+**同时更新 capabilities（可选但推荐）：**
+```json
+"capabilities": [
+  "web_research",
+  "market_intelligence",
+  "competitor_monitoring",
+  "news_gathering",
+  "web_browsing",
+  "image_search",
+  "visual_analysis"
+]
+```
+
+**验证方法：**
+```python
+delegate_task(agent_id='openclaw', goal='搜索...', context='...')
+# 检查返回的 effective_toolsets 是否包含 web, browser
+```
+
+**⚠️ 已踩坑**：此 session 中 OpenClaw 因缺少 `web`/`browser` 工具集，无法搜图和下载，导致我要亲自干活。用户指出后增加了这两个工具集才解决问题。
 
 OpenClaw 通过 `~/.claude/teams/ai-team/` 目录的 JSON inbox 文件与 Hermes 通信。协议文档在 `~/.openclaw/skills/mailbox/SKILL.md`。
 
