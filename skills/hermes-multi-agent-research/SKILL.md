@@ -469,10 +469,12 @@ bb-browser site list     # 查看可用 adapter
 ```bash
 有登录态需要复用  → bb-browser 优先          # 小红书/B站/知乎/微博…
 有 API/CLI 可调   → AutoCLI 优先             # GitHub/X/Reddit/LLM…
-需要发现其他 Agent → Agent-Reach             # Nostr 网络
+纯通用网页搜索    → 百度浏览器搜索 或 web_search tool  # 中文内容/竞品情报
 纯公开网页         → Trafilatura (推荐)       # 新闻/博客/百科
-竞品情报搜索       → 百度浏览器搜索            # 中国品牌营销动态
+需要发现其他 Agent → Agent-Reach             # Nostr 网络
 ```
+
+> ⚠️ **autocli 的能力边界**：autocli 对支持专用 adapter 的平台（知乎/B站/微博/雪球/BOSS直聘等）非常好用，但`autocli google search` 在中文环境下常因 Google 反爬频繁失败。不要依赖 autocli 做通用搜索——那是 L1（Trafilatura）和浏览器搜索的领域，不是 L2 的强项。
 
 ---
 
@@ -526,19 +528,29 @@ bb-browser site list     # 查看可用 adapter
 ```text
 Cron 触发
   │
-  ├─ Step 1: 5维并行搜索（与上述 Step 1 相同）
-  │   自动发起 5 个 browser_navigate 调用
-  │   不等待，全部并行发出
+  ├─ Step 1: 5维并行搜索
+  │   快速连续发出所有 browser_navigate 调用
+  │   ⚠️ 注意：Playwright MCP 的 navigate 调用默认替换当前标签页而不是新建
+  │   （即 5 次 navigate 实际是串行的，最后停留在最后一个搜索页上）
+  │   正确做法：快速连续发出多个 navigate，然后通过 screenshot 或 snapshot
+  │   逐个检查每个搜索结果（snapshot 文件会被保留到 .playwright-mcp/ 目录）
+  │   或：用多个标签页管理（browser_tabs + browser_navigate 指定 tab/index）
   │
-  ├─ Step 2: 结果扫描与筛选
-  │   每个搜索结果页用 browser_snapshot() 获取快照
-  │   自动识别关键文章：优先选品牌/平台原创、正规媒体、行业垂直媒体
+  ├─ Step 2: Baidu AI 摘要快速扫描（新增效率技巧）
+  │   在扫描搜索结果时，优先看 Baidu 自己的 AI 摘要（标注"基于文心大模型生成"）
+  │   — 这些摘要把散落的多篇文章整合成结构化概述（趋势、路径、时间节点）
+  │   — 用于快速锁定值得深读的方向，比逐个点击文章更快
+  │   然后 browser_snapshot() 获取每个搜索页的快照，识别关键文章标题
   │   原则：筛出 3-5 条最有价值的情报
   │
   ├─ Step 3: 深入阅读（自主决策）
-  │   无需用户确认，直接点击最有价值的文章
+  │   无需用户确认，根据 Step 2 的判断直接深入最有价值的文章
   │   用 browser_snapshot(full=true) 获取全文
-  │   注意文章可能被 Baidu 重定向 → 换来源
+  │   常见坑：Baidu 重定向 → 点击结果链接后跳回搜索页
+  │   → 解法：① 换来源重试 ② 反查文章标题搜索 ③ 用 scrapling_fetch 提取原文
+  │   ④ 用 autocli read <article_url> 绕过 Baidu 跳转层
+  │   ⚠️ Baidu AI 摘要页分两种：标注"以上内容均由AI生成"的是引用不精确的，
+  │   需跳过；标注"基于文心大模型生成"且有结构化分层目录的，可以当概述用
   │
   ├─ Step 4: 自主判断
   │   - 所有信息必须标注来源链接 + 时间 + 可信度
@@ -563,6 +575,66 @@ Cron 触发
 - 大量长文章时 snapshot 可能仍被截断（如文章有 400+ 行被 truncate）— 需要多读几个来源交叉补充
 - 注意百度搜索结果页中的**AI 摘要**（标注"AI导读""内容由AI智能生成"）— 内容可能不精确，需核实
 - 标注"作品含AI生成内容"的文章权威性低，优先读正规媒体
+
+### 已知坑与Fallback
+
+#### ⚠️ 坑 A — Baidu 文章链接重定向陷阱
+**症状**：点击百度搜索结果中的文章链接（`browser_click(ref='@eXX')`）后，页面跳转回 Baidu 搜索结果页，而非目标文章。你看到的内容和点击前几乎一样。
+
+**根因**：百度搜索结果链接大多通过百度自己的跳转中间页（`www.baidu.com/link?url=...`）转发。有时中间页处理异常，或者链接指向的不是原始文章而是百度聚合页/AI 摘要页。
+
+**诊断**：点击后检查 `url` 是否停留在 `baidu.com/s?wd=...` 域。如果看到的是搜索页而非文章页，说明命中此坑。
+
+**解法**：
+1. 换一个来源链接重试 — 同一条消息通常有多个来源（如转到了 CSDN 博客、知乎等）
+2. 反查文章标题 — 用 `browser_navigate` 直接搜索文章标题（`"热爱不止于球场" 懂球帝`），让百度重新索引
+3. **终极方案 — 改用 scrapling_fetch 提取**：如果浏览器连续点击无效，切换至 `mcp_scrapling_fetch` 工具提取文章内容。该工具绕过百度页面层，直接获取原始 HTML 的文本内容。
+4. 回退到 autocli read：`autocli read <article_url>` 使用 Mozilla Readability 引擎，能正确提取 JS 渲染后的正文
+
+#### ⚠️ 坑 B — Baidu AI 摘要替换原文
+**症状**：点击搜索结果链接后，进入的不是原始文章，而是 Baidu 自己生成的 AI 摘要页面（标题含"续写方案如下""以上内容均由AI生成"等标记，有"深度思考"按钮）。文章内容被 Baidu 自己的 AI 改写并分段列出。
+
+**诊断标志**：页面中出现"以上内容均由AI生成""深度思考"按钮、"续写方案如下"等元素。文章并非以自然段落呈现，而是列表/摘要形式。
+
+**解法**：
+1. 这不是可读的文章 — 跳出去重新搜索该文章标题，找直接来源
+2. 换信源（正规媒体 > 百家号 > 其他）
+3. 用 `mcp_scrapling_fetch` 直接提取原文 URL（如果手中有）
+
+#### ⚠️ 坑 C — autocli google search 不可靠
+**症状**：`autocli google search "关键词" --format json` 返回 `AUTOCLI_FAILED` 或空输出。尤其在中文关键词搜索时失败率高。
+
+**根因**：autocli 的 Google adapter 依赖底层浏览器驱动的 cookie 会话状态，Google 反爬对自动化流量敏感。
+
+**解法**：
+- 不以 autocli google search 为主力搜索方式
+- 优先使用百度浏览器搜索（对中文内容覆盖更全）+ 浏览器直接操作
+- 备选：直接用 duckduckgo 或 bing 的 web_search 工具
+- autocli 的真正优势在有专用 adapter 的平台（知乎/B站/微博），不是通用搜索
+
+#### ⚠️ 坑 D — scrapling-fetch MCP 服务不可用时
+**症状**：调用 `mcp_scrapling_fetch` 系列工具时返回 `MCP server 'scrapling-fetch' is unreachable after 3 consecutive failures`。DuckDuckGo 搜索和网页提取功能完全不可用。
+
+**根因**：scrapling-fetch 依赖 Playwright 浏览器引擎，需要特定版本的 Chromium。当 Playwright 浏览器二进制文件缺失或版本不匹配时（如错误提示 `Executable doesn't exist at /Users/gu/Library/Caches/ms-playwright/chromium-...`），MCP 服务无法启动。
+
+**解法 - 推荐降级链**：
+1. 第一步：尝试 `autocli news top <topic>` 获取英文/技术新闻（只返回 Hacker News/Reddit 等英文源，中文内容不适用）
+2. 第二步：使用 **Playwright MCP browser**（`mcp_playwright_browser_navigate` + `mcp_playwright_browser_snapshot`）执行 Baidu 搜索。这个工具不依赖 scrapling-fetch 的浏览器实例，有自己的浏览器引擎。实测在 Scrapling 不可用时工作正常。
+3. 第三步：用 `mcp_playwright_browser_snapshot` 的 YAML 输出等效替代 scrapling 的 markdown 输出 — YAML 中的 `<heading>` + `<text>` 元素基本覆盖了文章标题和摘要内容
+
+**注意**：Playwright MCP 的 browser_snapshot 输出是 YAML 格式而非 markdown，解析时需适应。搜索结果中的 URL 是 Baidu 跳转链接（`www.baidu.com/link?url=...`），需要手动从该链接提取目标 URL 参数，或直接在搜索框重新搜索文章标题。
+
+#### 并行搜索效率技巧
+
+§F 工作流中 Step 1 已提到并行 `browser_navigate` 效率最高，但补充一条实操原则：
+
+**不要串行执行 search→scan→click→read 循环。** 正确的做法：
+1. 一次性并行打开所有搜索标签页（5 维搜索同时发出）
+2. 逐个扫描搜索结果快照，记录关键文章标题
+3. **全部扫描完毕后**，再判断哪些文章值得深入阅读
+4. 按优先级逐个深入阅读
+
+这样可以避免：读了 1 篇文章后才发现另一个搜索维度有更重要的新闻，回去重新搜索浪费时间。
 
 ### 竞品情报报告结构（可复用模板）
 
@@ -634,6 +706,9 @@ Cron 触发
 这四个工具都是**通用 CLI 工具**，不绑定任何特定 Agent。Hermes 可用 `terminal()` 调用，Claude Code / Cursor 可在终端直接使用，bb-browser 还支持 MCP Server 模式零配置接入。
 
 详细调研记录见 `references/web-research-toolchain-discovery.md`。
+Baidu 搜索实操坑点（重定向循环、AI 摘要页替换、autocli 搜索失败）见 `references/baidu-research-pitfalls-2026-05-16.md`。
+Cron 情报自动化执行实录（2026-05-18，含并行搜索工具行为验证）见 `references/cron-intelligence-2026-05-18.md`。
+HTML Anything 项目评估（nexu-io/html-anything, 2k⭐, Agent 时代的 HTML 编辑器）见 `references/html-anything-research.md`。
 
 ---
 
@@ -744,7 +819,10 @@ pirlo gateway
 - **B 技术专员**：内斯塔负责「预处理 + 复审」，Claude Code 负责「最后一公里编码」。预处理=搜项目结构、定位文件、理解模糊需求；复审=检查输出质量。这个决策是在用户承认「不熟悉编程，给的需求一定不清晰」的背景下做出的——中间层在非技术用户场景下价值最大。
 - **C 桌面操作员**：Agent TARS 通过 headless 模式 + JSON 输出与 Hermes 集成。详见 `references/agent-tars-integration.md`。OpenClaw 因桌面操作「不好用」被重新定位。
 - **D 代码审查员**：codex 已有且 active，直接采用。
-- **E 调研专员**：OpenClaw 重新定位为调研专员。利用其 Chrome 浏览器操控+DuckDuckGo 搜索+Canvas UI 生成的长板做信息搜集，避开桌面操作交互不好的短板。与 H 情报官共用同一 OpenClaw 实例。\n- **F 方案策划**：皮尔洛待创建 named agent。DeepSeek V4 Pro 做基础方案工作（框架、卖点提炼、竞品对比、排期初稿），用户核心创意走 ChatGPT 网页版。\n- **G 审核角色**：hermes-internal 已有且 active，read-only 模式适合质检。\n- **H 情报官**：OpenClaw 从 C 桌面操作员改为 H 情报官。与 E 调研专员共用同一 OpenClaw 实例。利用 Chrome 浏览器操控+Canvas UI 生成+独立后台进程的长板做情报监控。
+- **E 调研专员**：OpenClaw 重新定位为调研专员。利用其 Chrome 浏览器操控+DuckDuckGo 搜索+Canvas UI 生成的长板做信息搜集，避开桌面操作交互不好的短板。与 H 情报官共用同一 OpenClaw 实例。
+- **F 方案策划**：皮尔洛待创建 named agent。DeepSeek V4 Pro 做基础方案工作（框架、卖点提炼、竞品对比、排期初稿），用户核心创意走 ChatGPT 网页版。
+- **G 审核角色**：hermes-internal 已有且 active，read-only 模式适合质检。
+- **H 情报官**：OpenClaw 从 C 桌面操作员改为 H 情报官。与 E 调研专员共用同一 OpenClaw 实例。利用 Chrome 浏览器操控+Canvas UI 生成+独立后台进程的长板做情报监控。
 - **推送渠道**：所有 cron 推送（早报、竞品监控等）走斯塔姆群（设为 home channel），不干扰马蒂尼 DM。
 
 ### 角色定义工作流

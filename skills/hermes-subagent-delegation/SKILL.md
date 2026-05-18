@@ -181,6 +181,45 @@ delegate_task(
 
 ## Pitfalls
 
+### 0. 不要自己干技术活——先派内斯塔
+
+**硬性约束。** 用户已多次纠正：但凡涉及安装、配置、clone、代码修改、超 3 步的操作，必须走 内斯塔 流程。
+
+用户原话：**"这事儿你又要自己干？别忘了你的角色设定"**
+
+触发信号：
+- 用户说「搞/你弄/处理一下」涉及复杂操作
+- 涉及 clone、install、deploy、config 变更
+- 超过 1 步的终端命令序列
+
+正确做法：立即 `delegate_task(agent_id='nesta', goal=..., context=...)`，不要自己写命令/改文件。
+
+**问题**：当接到技术任务（读代码、分析系统、做方案设计）时，你可能会自己动手 read_file / search_files / terminal，而不是先派内斯塔。
+
+**用户原话**："你的角色不是自己干，你把这些交给内斯塔吧"
+
+**正确流程**：
+1. 先判断任务类型：如果涉及代码、配置、系统分析 → 这是内斯塔的领域
+2. delegate_task(agent_id='nesta', goal='分析/读码/出任务包')
+3. 内斯塔出精确任务包后 → delegate 给 Claude Code 执行
+4. 内斯塔验收 → 你只汇报摘要
+
+**例外**：三步以内的简单操作（读一行配置、查一个文件）可以自己做。
+
+### 0a. 工具结果处理完再开口——不要急着干活
+
+**问题**：收到 delegate_task 或工具调用的结果后，不要急着继续执行下一步，先确保**完整处理完所有返回的数据**。
+
+**用户原话**："确认好了跟我说，别急的干" — 当 Claude Code 的 delegate 结果已返回但还没处理到（前一个 tool call 的输出还没读完），就急着想干下一步的时候。
+
+**正确行为**：
+1. 工具调用或 delegate_task 返回后，先完整读完所有输出和结果
+2. 确认没有异常或需要修正的地方
+3. 处理完毕后，主动告知用户结果摘要
+4. 用户确认后再进行下一步操作
+
+**核心原则**：不跳跃，不预判，不跳过中间状态。每个 task 的 output 是下一 task 的 input，跳过了就断链。
+
 ### 1. 模型硬编码是隐形杀手
 `config.yaml` delegation 段如果有 `model:` 和 `provider:` 非注释，所有子Agent强制使用该模型，即使 `agent_id` 指定了不同的 profile。这是子Agent空转（0 tokens）的最常见原因。
 
@@ -263,7 +302,24 @@ grep "dialog_timeout_s" ~/.hermes/config.yaml
 
 4. **主会话直接写** — 不走子 Agent，由父 Agent 直接完成文件操作（当子 Agent 连续超时时，兜底方案）。父 Agent 可用 `write_file` + `patch` 工具做定向修改，不需要子 Agent。
 
-### 6. 连续失败后的策略切换 — 必须立即通知用户
+### 6. max_iterations 限制导致子Agent中断（2026-05-17）
+
+**症状**：子Agent 的 `exit_reason` 为 `"max_iterations"`，tool_trace 显示大量正常调用但被强制中断。常见于浏览器研究任务（Getty Images 搜索、多步网页浏览）。
+
+**配置位置**：`~/.hermes/config.yaml` → `delegation.max_iterations`（默认 50）
+
+**诊断**：
+```bash
+grep "max_iterations" ~/.hermes/config.yaml
+```
+
+**修复**：适当增加（如 50→150）。变更后无需重启 gateway，下次 delegate_task 自动生效。
+
+**触发条件**：网页浏览 + 多次交互的研究任务（搜索→点图→提取URL→下载）。不是模型配错（tokens > 0 可区分）。
+
+**详细参考**：`references/max-iterations-limit.md`
+
+### 7. 连续失败后的策略切换 — 必须立即通知用户
 
 如果同一个子 Agent 连续超时 2 次，**必须立即通知用户**，不要静默重试。
 
@@ -399,10 +455,55 @@ agent-tars run --headless \
 2. 确认 API key 可访问（可通过 `--model.apiKey` 或环境变量传递）
 3. 先手工测试一个简单任务验证连通性
 
-**局限性：**
-- 冷启动较慢（几秒），每次运行是新环境
+**局限性（2026-05-16 更新）：**
+- **❌ 不要用 `delegate_task(agent_id='agent-tars')`** — 子 Agent 沙箱 blocked_tools（write_file, patch, send_message）阻断桌面操作能力，最终 timeout。必须通过 `terminal()` 直接调用 CLI
+- 冷启动较慢（首调 15-20s，后续 3-8s），每次运行是新环境
 - 需保证终端工具可用且 node 版本 ≥22.15.0
 - 无状态，每次需要重设上下文
+- **端口冲突** — agent-server 绑定 8899，前次 zombie 进程残留会报 `EADDRINUSE`
+  ```bash
+  # 诊断 + 修复
+  lsof -i :8899                          # 查看占用进程
+  kill <PID>                             # 释放端口
+  ```
+  也可能是 Python 僵尸进程（非 agent-tars 自身），确认无响应后直接 kill
+- **API Key 显式传入** — `OPENAI_API_KEY` 环境变量可能为空，必须用 `--model.apiKey` 显式传入有效的 API key
+- **已验证可用的模型** — DeepSeek Chat（`deepseek-chat`）通过 `--model.provider deepseek --model.id deepseek-chat --model.apiKey "$DEEPSEEK_API_KEY"` 可用。OpenAI 环境变量可能为空，不要依赖
+- **头冷验证**：先用简单任务测试连通性（如查桌面时间），再用复杂任务
+- 详细验证步骤见 `references/agent-tars-integration.md`
+
+#### macOS 特有：`cc` 命令冲突（系统 C 编译器 vs Claude Code）
+
+**问题**：macOS 系统自带 `/usr/bin/cc`（Clang C 编译器），而 Claude Code 的常见别名也是 `cc`。在终端打 `cc` 会启动 C 编译器而不是 Claude Code。
+
+**症状**：
+```bash
+$ cc --list
+clang: error: unknown argument: '--list'
+$ cc switch
+clang: error: unknown argument: 'switch'
+```
+
+**修复**：在 `~/.zshrc` 中添加 alias：
+```bash
+# cc → Claude Code
+alias cc="claude"
+```
+
+然后 `source ~/.zshrc` 或新开终端生效。验证：
+```bash
+$ alias cc
+alias cc='claude'
+```
+
+**环境检查**：
+```bash
+which cc           # 确认指向 /usr/bin/cc（系统编译器）
+which claude       # 确认指向 ~/.local/bin/claude（Claude Code 二进制，约 2MB，Mach-O 64-bit）
+claude --version   # 确认版本（如 2.1.142）
+```
+
+**关联**：Hermes 已使用的 `claude` Agent（file_executor）通过 `agent_id='claude'` 调用，不受此影响。此 pitfall 仅影响终端手动操作。
 
 ### 通用集成规则
 
@@ -413,11 +514,11 @@ agent-tars run --headless \
 | 适当超时 | 桌面操作任务通常需要 30s-120s |
 | 失败降级 | 如果 CLI 工具连续失败，降级为 OpenClaw 或其他备选 |
 
-### 6. 新增 Agent 到注册表 ≠ 新增 delegate_task 的 agent_id
+### 8. 新增 Agent 到注册表 ≠ 新增 delegate_task 的 agent_id
 
 agent-registry.json 只是路由决策的配置文件，**不决定 `delegate_task` 函数的可用 agent_id 列表**。
 
-### 7. 完整 Named Agent 添加流程（含角色审计）
+### 9. 完整 Named Agent 添加流程（含角色审计）
 
 新增一个 Named Agent 到 Hermes 系统需要走完整流程，不能只改 registry：
 
@@ -538,7 +639,7 @@ delegate_task(agent_id='nesta', goal='回复此消息确认路由正常')
 | codex | 有 `file_modification` 和 `script_execution`，但手册说「不改代码」 | 去掉这两个能力 |
 | OpenClaw | 仍是 `desktop_operator` 类型，手册已改为调研专员 | 改为 `researcher`，同步更新路由 |
 
-### 8. 角色审计：type/capabilities 常见错误
+### 10. 角色审计：type/capabilities 常见错误
 
 | 错误模式 | 问题 | 修复 |
 |---------|------|------|
@@ -548,7 +649,7 @@ delegate_task(agent_id='nesta', goal='回复此消息确认路由正常')
 | toolsets 与能力矛盾 | 纯文职角色有 terminal | blocked terminal |
 | not_for 过于简略 | 只写「复杂代码修改」不够 | 精确列出手册的「不做什么」|
 
-### 9. Profile 技能可见性陷阱：全局 skill 不会自动同步到 Profile
+### 11. Profile 技能可见性陷阱：全局 skill 不会自动同步到 Profile
 
 **问题：** 把新 skill 安装到 `~/.hermes/skills/`（全局）后，通过 `hermes -p <profile>` 运行的 Agent **看不到**这个 skill。Hermes 加载技能时，profile 优先从自己的 `skills/` 目录加载，不回退到全局目录。
 
@@ -579,7 +680,7 @@ hermes -p <profile> skills list | grep <new-skill>
 
 **真实案例（2026-05-13）：** 安装 `humanizer-zh` 到全局后，`hermes -p piero skills list | grep humanizer-zh` 返回空。symlink 到 piero 的 skills 目录后，可见且可用。
 
-### 10. Profile 克隆陷阱：feishu_system_prompt 覆盖 SOUL.md
+### 12. Profile 克隆陷阱：feishu_system_prompt 覆盖 SOUL.md
 
 **问题：** 用 `hermes profile create <name> --clone` 新建 Hermes Profile 时，源 Profile 的 `feishu_system_prompt` 会被完整复制到新 Profile 的 `config.yaml` 中。对于飞书 Bot，`feishu_system_prompt` **优先级高于 SOUL.md**，意味着克隆出来的 Bot 人格是源 Profile 的，不是目标 Agent 的。
 
@@ -607,7 +708,7 @@ grep "feishu_system_prompt" ~/.hermes/profiles/<name>/config.yaml
 # 检查内容是否与目标 Agent 匹配
 ```
 
-### 10. Profile 重命名 + agent-registry.json 同步流程
+### 13. Profile 重命名 + agent-registry.json 同步流程
 
 当需要更改 Agent 的名称时（如代号名 → 真名），需要同步修改三处配置以确保一致性：
 
@@ -669,7 +770,7 @@ hermes -p new-name skills list | grep kanban-worker
 - agent-registry.json key: `"hermes-internal"` → `"ambrosini"`, id: `"hermes-internal"` → `"ambrosini"`
 - Kanban 看板：旧任务 t_5deb2903 仍显示 `@hermes-internal` → 归档重建后显示 `@ambrosini` ✅
 
-### 11. agent-registry.json 修复工作流（已验证模式）
+### 14. agent-registry.json 修复工作流（已验证模式）
 
 当多 Agent 测试发现配置缺陷时，采用以下工作流修复：
 
@@ -717,7 +818,7 @@ hermes -p new-name skills list | grep kanban-worker
 - best_for → 改为审核相关描述
 - delegation.method 和 subagent_profile 保持
 
-### 11. OpenClaw 连接冲突：Bot Profile 上线前的必要清理
+### 15. OpenClaw 连接冲突：Bot Profile 上线前的必要清理
 
 **问题：** 当为一个已有的飞书 Bot 创建独立的 Hermes Profile（Profile B）时，如果该 Bot 之前由 OpenClaw（或其他服务）通过 WebSocket 长连接处理消息，**Hermes 和 OpenClaw 不能同时连接同一个飞书 Bot**。飞书开放平台只允许一个 WebSocket 长连接客户端。
 
@@ -744,11 +845,11 @@ cat ~/.hermes/profiles/<name>/gateway_state.json | grep feishu
 4. 重启目标 Hermes Profile 的 Gateway
 5. 验证：在飞书 DM 该 Bot，检查回复是否来自 Hermes
 
-### 12. 完整 Named Agent 添加流程（含飞书 Bot Profile 创建）
+### 16. 完整 Named Agent 添加流程（含飞书 Bot Profile 创建）
 
 新增一个 Named Agent 到 Hermes 系统需要走完整流程。当 Agent 需要独立飞书 Bot 时，还需创建 Hermes Profile。
 
-### 13. Feishu DNS 间歇故障（环境级风险）
+### 17. Feishu DNS 间歇故障（环境级风险）
 
 **发现来源**：gateway.error.log 中频繁出现 DNS 解析失败。
 
@@ -768,7 +869,27 @@ grep -E "keepalive ping timeout|reconnect|NameResolutionError" ~/.hermes/logs/ga
 
 **性质**：系统/网络层问题，非配置可修复。可尝试切换公共 DNS 或 /etc/hosts 硬编码缓解。
 
-### 14. 批量 YAML frontmatter 编辑：子 Agent 的脆弱区
+### 18. OpenClaw 工具集缺失导致调研失败
+
+**问题**：派 OpenClaw 去搜图/搜资料时，它用 curl 下载被 CDN 拦截（403/404），只能用 curl 没法浏览网页。
+
+**根因**：`agent-registry.json` 中 openclaw 的 toolsets 只配了 `["terminal", "file"]`，没有 `web` 和 `browser`。
+
+**修复**：
+```json
+"openclaw": {
+  "subagent_profile": {
+    "toolsets": ["terminal", "file", "web", "browser"]
+  }
+}
+```
+然后重启 gateway：`hermes gateway run --replace`
+
+**验证方法**：搜图任务 `delegate_task(agent_id='openclaw', goal='搜真实照片')` 应该能用 `browser_navigate` 直接访问网页。
+
+**关联**：这也在 `visual-novel-studio` 的图片审计协议中有详细说明。
+
+### 19. 批量 YAML frontmatter 编辑：子 Agent 的脆弱区
 
 **问题**：让子 Agent（特别是 Claude Code）批量编辑 YAML frontmatter 文件（如给 50+ SKILL.md 加字段）高度不可靠。子 Agent 的 YAML 解析/重写逻辑容易出错，导致：
 - frontmatter 缩进层级错乱（`agents:` 插入到子层级而非根层级）
@@ -1232,12 +1353,66 @@ head -30 /path/to/file.js
 
 详见 `references/codex-deep-dive-open-design.md` — Codex 对 Open Design daemon 的深度调试实录。
 
+## Task Package 模板 v3.0：三模式整合（2026-05-15）
+
+从 karpathy/autoresearch（81k⭐）借鉴了三个设计模式，整合到 task package 规范中。
+
+模板文件：`templates/task_package_template.md`
+
+### 模式一：KEEP / DISCARD 二值化审核
+
+每个 task package 末尾必须有执行结论区块，只有两种输出：
+
+```
+## 执行结论
+- [ ] ✅ KEEP — 符合验收标准，可以合并
+- [ ] ❌ DISCARD — 不满足，需要重做
+- 理由：具体说明为什么 KEEP 或 DISCARD
+```
+
+**规则**：
+- 二值，没有"部分通过"、"还行"、"建议修改"
+- DISCARD 时必须列出哪些验收项不满足
+- 验收标准每条都必须在理由中被覆盖
+
+### 模式二：NEVER_STOP 自动执行
+
+在元数据区加 `NEVER_STOP: true` 字段：
+
+```yaml
+NEVER_STOP: true  # 子 Agent 不得停下问"我该继续吗"
+```
+
+当此字段为 true 时，子 Agent 遇到不确定性自己判断继续，不能停下来问人类。只有硬性阻塞（API Key 缺失、文件不可写）才能停。
+
+**适用场景**：
+- ✅ 批处理任务、情报收集、定时任务
+- ❌ 交互式任务、新代码库首次探索
+
+### 模式三：ALLOWED_FILES 修改范围
+
+在修改范围区明确标注允许修改的文件：
+
+```
+ALLOWED_FILES:
+- src/config.py
+- src/tests/test_config.py
+```
+
+不在列表中的文件禁止修改。调研类填 `N/A`。
+
+### 设计来源
+
+详细架构分析见 `autonomous-ai-agents/chief-of-staff` skill 的 `references/autoresearch-architecture-analysis.md`。
+
 ## 参考文件
 
 - `references/8-agent-roster-final-2026-05-13.md` — 8 角色最终配置总表：名称、系统 ID、Profile、Skill 数、瘦身幅度、看板接入状态
 - `references/agent-adapter-write-debugging.md` — Agent Write 工具调用传空参数 debug 指南
 - `references/codex-deep-dive-open-design.md` — Codex 对 Open Design daemon Write bug 的深度调试分析实录（读 50+ 文件、找根因、修复、跑测试）
+- `templates/task_package_template.md` — Task Package 模板 v3.0，整合 autoresearch 三个设计模式：二值化审核（KEEP/DISCARD）、NEVER_STOP 自动执行、ALLOWED_FILES 修改范围限定。详见下文「Task Package 模板 v3.0：三模式整合」。
 - `references/diagnostic-case-kimi.md` — 会话实录：Kimi 子Agent修复全流程
+- `references/hermes-mcp-inventory-2026-05-15.md` — 全工具链 MCP 清单（Hermes / WorkBuddy / DeepSeek TUI / Claude Code CLI）
 - `references/multi-agent-test-2026-05-13.md` — 全链路多 Agent 测试实录：8 角色测试方法、发现问题、修复记录、kanban 缺口
 - `references/large-output-subagent-strategy.md` — 大输出任务子Agent策略（数据嵌入、选型、SVG导出、多轮迭代）
 - `references/multi-doc-analysis-deepseek-tui.md` — 多文档分析 + 报告生成实录（2026-05-05）
