@@ -22,7 +22,7 @@
 - Dislikes: role merging, tool merging, vague plans
 - Feedback style: direct, blunt when something isn't working
 - Wants timely blocker notification (no silent retries)
-- 8 Agent system: 马蒂尼(total control), 内斯塔(tech), Claude Code(execution), 皮尔洛(planning), OpenClaw(research), Codex(review), TARS(desktop), 安布罗西尼(verification) — keep roles separate
+- Agent system: 马蒂尼(total control), 内斯塔(tech), Claude Code(execution), 皮尔洛(planning), Intelligence(research/intelligence), Codex(review), TARS(desktop), 安布罗西尼(verification) — keep roles separate
 - Screenshot requirement: must crop to app window area only, never full-screen
 
 ## Environment

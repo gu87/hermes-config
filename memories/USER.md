@@ -14,8 +14,8 @@ Gu expects prompt feedback when issues arise. "有问题你要及时反馈给我
 §
 Gu requires project plans to be executable-grade: clear division of labor (who does what), numbered sub-tasks with acceptance criteria, breakpoint recovery instructions (so anyone can pick up after interruption), and a progress board. "太粗了" feedback means the first draft was too vague — iterate to executable level.
 §
-OpenClaw 截图必须 crop 到 App 窗口区域，不用全屏。涉及数据展示时优先用飞书电子表格（Sheet）而非多维表格（Base），除非需要关联/公式/权限管理。
+TARS/桌面操作截图必须 crop 到 App 窗口区域，不用全屏。涉及数据展示时优先用飞书电子表格（Sheet）而非多维表格（Base），除非需要关联/公式/权限管理。
 §
 Confirmed design decisions stick and are not re-discussed. When a role or framework node is confirmed (e.g., 马蒂尼 = 总助), subsequent conversation should treat it as fixed and move to the next unconfirmed node. Re-raising settled points frustrates Gu.
 §
-Gu 喜欢数据驱动的回答，优先用表格呈现对比选项。停止、否定、打断时不要继续解释。指令短，期望补齐上下文。
+Gu 偏好即时执行而非推迟调度，不要建议"明天"做。数据驱动回答，优先表格对比。停止/打断时停止解释。指令短，期望补齐上下文。

@@ -1,6 +1,6 @@
 # Hermes Runtime Runbook
 
-Last updated: 2026-05-18
+Last updated: 2026-05-23
 
 This is the operational runbook for Gu's local Hermes setup after the Hermes Agent 0.14 upgrade. It records where the system lives, how to check health, and how to restart services without relying on memory.
 
@@ -21,9 +21,11 @@ This is the operational runbook for Gu's local Hermes setup after the Hermes Age
 | Service | launchd label | Purpose | Notes |
 |---------|---------------|---------|-------|
 | WebUI | `ai.hermes.webui` | Hermes WebUI | `http://127.0.0.1:8787/` |
-| Main gateway | `ai.hermes.gateway-piero` | Feishu-facing main profile | Profile: `piero` |
-| Technical gateway | `ai.hermes.gateway-nesta` | Technical profile | Profile: `nesta` |
-| Review/API gateway | `ai.hermes.gateway-ambrosini` | Review profile and API server | Profile: `ambrosini` |
+| Main gateway | `ai.hermes.gateway` | Single Feishu-facing entrypoint | Profile: default / 马尔蒂尼 |
+| Profile gateway | `ai.hermes.gateway-maldini` | Disabled legacy 马尔蒂尼 profile gateway | Keep profile data for rollback; do not run alongside default because it uses the same Feishu app_id |
+| Profile gateway | `ai.hermes.gateway-nesta` | Disabled technical profile gateway | Agent 编制保留；不再常驻独立飞书入口 |
+| Profile gateway | `ai.hermes.gateway-piero` | Disabled planning profile gateway | Agent 编制保留；不再常驻独立飞书入口 |
+| Profile gateway | `ai.hermes.gateway-ambrosini` | Disabled review profile gateway | Agent 编制保留；不再常驻独立飞书入口 |
 | OpenChronicle | `com.openchronicle.daemon` | Local memory/search MCP backend | MCP URL: `http://127.0.0.1:8742/mcp` |
 
 ## Ports
@@ -32,7 +34,7 @@ This is the operational runbook for Gu's local Hermes setup after the Hermes Age
 |------|---------|
 | `8787` | Hermes WebUI |
 | `8742` | OpenChronicle MCP |
-| `8642` | Hermes API server, currently owned by the active API gateway profile |
+| `8642` | Hermes API server, owned by the default gateway |
 
 ## Health Checks
 
@@ -45,8 +47,9 @@ curl -fsS http://127.0.0.1:8787/ >/dev/null
 
 Expected healthy state:
 
-- `piero`, `nesta`, and `ambrosini` gateways are running.
-- Feishu is connected for active Feishu-facing profiles.
+- Only `ai.hermes.gateway` is running as the Feishu entrypoint.
+- `ai.hermes.gateway-maldini`, `ai.hermes.gateway-nesta`, `ai.hermes.gateway-piero`, and `ai.hermes.gateway-ambrosini` are disabled unless explicitly re-enabled for rollback/testing.
+- Feishu is connected for the default gateway.
 - OpenChronicle reports running/healthy.
 - Hermes MCP test for `openchronicle` connects and discovers tools.
 - WebUI GET succeeds and returns content on `127.0.0.1:8787`.
@@ -56,18 +59,14 @@ Expected healthy state:
 Restart gateways through Hermes CLI:
 
 ```bash
-/Users/gu/.Hermes/hermes-agent/venv/bin/python -m hermes_cli.main --profile piero gateway restart
-/Users/gu/.Hermes/hermes-agent/venv/bin/python -m hermes_cli.main --profile nesta gateway restart
-/Users/gu/.Hermes/hermes-agent/venv/bin/python -m hermes_cli.main --profile ambrosini gateway restart
+/Users/gu/.Hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway restart
 ```
 
 Restart launchd services when the CLI path is not enough:
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/ai.hermes.webui
-launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway-piero
-launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway-nesta
-launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway-ambrosini
+launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway
 launchctl kickstart -k gui/$(id -u)/com.openchronicle.daemon
 ```
 
@@ -77,9 +76,11 @@ launchctl kickstart -k gui/$(id -u)/com.openchronicle.daemon
 |---------|----------|
 | WebUI stdout | `/Users/gu/.hermes/webui.log` |
 | WebUI stderr | `/Users/gu/.hermes/webui.error.log` |
-| Piero gateway | `/Users/gu/.hermes/profiles/piero/logs/gateway.log` |
-| Nesta gateway | `/Users/gu/.hermes/profiles/nesta/logs/gateway.log` |
-| Ambrosini gateway | `/Users/gu/.hermes/profiles/ambrosini/logs/gateway.log` |
+| Main gateway | `/Users/gu/.hermes/logs/gateway.log` |
+| Disabled Maldini profile gateway | `/Users/gu/.hermes/profiles/maldini/logs/gateway.log` |
+| Disabled Piero profile gateway | `/Users/gu/.hermes/profiles/piero/logs/gateway.log` |
+| Disabled Nesta profile gateway | `/Users/gu/.hermes/profiles/nesta/logs/gateway.log` |
+| Disabled Ambrosini profile gateway | `/Users/gu/.hermes/profiles/ambrosini/logs/gateway.log` |
 | OpenChronicle launchd stdout | `/Users/gu/.openchronicle/logs/launchd.out.log` |
 | OpenChronicle launchd stderr | `/Users/gu/.openchronicle/logs/launchd.err.log` |
 
@@ -106,3 +107,4 @@ Rollback is destructive and requires explicit confirmation before running. Use t
 - Do not push local Hermes Agent customizations to upstream `origin`.
 - If publishing Hermes Agent changes, use the user's fork remote after explicit confirmation.
 - Do not treat memory as runtime truth. For service status, run the health checks above.
+- Current operating model: one Feishu entrypoint, many internal managed agents. Keep expert profiles and agent registry entries, but do not keep separate Feishu profile gateways running by default.
