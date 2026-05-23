@@ -1,6 +1,6 @@
 ---
 name: hermes-multi-agent-research
-description: "UMBRELLA: 多Agent研究确认 + Agent路由决策 + Claude Code委托协议 + 常驻Worker + GitHub调研 + 竞品情报研究 + Web工具链。合并了 agent-routing-guide 和 hermes-claude-code-delegation。"
+description: "UMBRELLA: 多Agent研究确认 + Agent路由决策 + Claude Code委托协议 + 常驻Worker + GitHub调研 + 竞品情报研究 + Web工具链 + 工具评估协议。合并了 agent-routing-guide 和 hermes-claude-code-delegation。"
 category: autonomous-ai-agents
 agents: [hermes, nesta]
 ---
@@ -482,32 +482,60 @@ bb-browser site list     # 查看可用 adapter
 
 > 当需要搜集中国品牌的当前营销动作（如蒙牛/伊利的世界杯营销活动），使用百度搜索 + 浏览器点击阅读全文，而不是依赖 web_search 工具（如果不可用）。
 
+### 工具选择：Playwright MCP Browser 优先
+
+百度搜索使用 **Playwright MCP browser** 工具（`mcp_playwright_browser_navigate`, `mcp_playwright_browser_snapshot`, `mcp_playwright_browser_tabs`）。旧版 `browser_navigate`/`browser_snapshot` 工具已不活跃。
+
+**Playwright MCP 与旧版 browser 工具的关键差异：**
+- `mcp_playwright_browser_tabs(action='new', url=...)` — 打开新标签页；`action='select'` 切换；`action='list'` 查看所有
+- `mcp_playwright_browser_tabs(action='select', index=N)` — 切换到第 N 个标签页（0-indexed）
+- `mcp_playwright_browser_snapshot` — 输出 YAML 格式文本（非 old browser 的 inline text），自动保存到 `.playwright-mcp/` 目录
+- **不提供** `full=true` 参数和 `browser_click` 直接点击搜索链接的功能
+- 搜索结果中的 URL 是 Baidu 跳转链接（`www.baidu.com/link?url=...`），直接点击往往跳回搜索页
+
+**读取自动保存的 Playwright MCP Snapshot 文件：**
+```bash
+# 找到最近的 snapshot YAML 文件
+ls -lt ~/.hermes/hermes-agent/.playwright-mcp/*.yml | head -5
+
+# 用 read_file 读取（需要绝对路径）
+read_file(path='/Users/gu/.hermes/hermes-agent/.playwright-mcp/page-{timestamp}.yml')
+```
+YAML 中包含 `<heading>`（文章标题）、`<text>`（摘要文本）、`<link>`（链接 URL）等元素。`/url:` 字段包含跳转链接。无需手动转换格式。
+
 ### 工作流
 
 ```text
 用户指令 (如 "搜集蒙牛和伊利关于世界杯的营销动作")
   │
-  ├─ Step 1: 5维并行搜索（优于逐个搜索）
-  │   同时打开多个搜索标签页，覆盖以下维度：
+  ├─ Step 1: 5维并行搜索——用 Playwright MCP 标签页管理
+  │   一次性打开 5 个新标签页（不要串行 navigate→snapshot→navigate）：
+  │   mcp_playwright_browser_tabs(action='new', url=百度搜索URL) × 5
+  │
+  │   覆盖以下编码后的百度搜索 URL（中文需 manual URL encode）：
   │   ① 品牌直接搜索："懂球帝 品牌 营销 产品 最新"
   │   ② 行业趋势："体育营销 2026 最新 足球"
   │   ③ 赛事专题："世界杯 营销 最新 2026"
   │   ④ 竞品动态："足球APP 竞品 直播吧 虎扑 最新动态"
   │   ⑤ 行业投融资："体育互联网 行业 投融资 2026"
-  │   注意：URL 需要手动 URL encode 中文；并行 browser_navigate 效率最高
+  │   实用提示：用 python -c "import urllib.parse; print(urllib.parse.quote('中文'))" 快速 encode
   │
-  ├─ Step 2: 阅读搜索结果页面，识别关键文章
-  │   browser_snapshot() 查看结果列表
+  ├─ Step 2: 逐个扫描搜索结果——用标签页切换 + snapshot
+  │   mcp_playwright_browser_tabs(action='select', index=N) 切换到每个标签页
+  │   mcp_playwright_browser_snapshot() 获取搜索结果（YAML 格式）
+  │   Playwright MCP 自动保存 YAML 到 .playwright-mcp/ 目录
+  │   → 用 read_file 读取自动保存的 YAML 快照文件
+  │   → 重点关注 <heading> 元素内的标题和 <link> 内的链接
   │   优先阅读：品牌官网、新华网/海报新闻等正规媒体、行业分析文章
   │   注意：搜索"大家还在搜"区域提示了用户真实需求
   │   注意：百度搜索结果中可能包含 AI 摘要（标注"AI导读"），内容需核实
   │
   ├─ Step 3: 深入阅读关键文章
-  │   browser_click(ref='@eXX') 点击文章链接
-  │   browser_snapshot(full=true) 获取全文
-  │   注意：很多文章需要多次 snapshot 才能看完（百度页面截断）
-  │   常见坑：点击搜索结果链接后可能被重定向到 Baidu 的信息聚合页
-  │         → 解法：重新在搜索结果页找下一个可信来源的链接，或换关键词搜该文章标题
+  │   对 Step 2 中筛选出的最有价值文章，有两种获取方式：
+  │   A) 直接搜索文章标题：mcp_playwright_browser_navigate(url=某度搜索文章标题)
+  │      → mcp_playwright_browser_snapshot() 获取内容
+  │   B) 读取自动保存的 YAML 快照中的正文段（<text> 元素）
+  │   注意：无需尝试 browser_click 点击 Baidu 跳转链接——它们会重定向回搜索页
   │
   ├─ Step 4: 多轮搜索（细化方向）
   │   根据第一步结果中的新发现，做二次搜索
@@ -529,12 +557,14 @@ bb-browser site list     # 查看可用 adapter
 Cron 触发
   │
   ├─ Step 1: 5维并行搜索
-  │   快速连续发出所有 browser_navigate 调用
-  │   ⚠️ 注意：Playwright MCP 的 navigate 调用默认替换当前标签页而不是新建
-  │   （即 5 次 navigate 实际是串行的，最后停留在最后一个搜索页上）
-  │   正确做法：快速连续发出多个 navigate，然后通过 screenshot 或 snapshot
-  │   逐个检查每个搜索结果（snapshot 文件会被保留到 .playwright-mcp/ 目录）
-  │   或：用多个标签页管理（browser_tabs + browser_navigate 指定 tab/index）
+  │   用 mcp_playwright_browser_tabs 一次性打开 5 个新标签页：
+  │   mcp_playwright_browser_tabs(action='new', url=...) × 5
+  │   ✅ 正确做法：每个 new 调用创建一个独立标签页，互不覆盖
+  │   然后用标签页切换 + snapshot 逐个检查每个搜索结果：
+  │   mcp_playwright_browser_tabs(action='select', index=N)
+  │   mcp_playwright_browser_snapshot()
+  │   ⚠️ 自动保存的 snapshot YAML 文件在 .playwright-mcp/ 目录下
+  │   用 read_file(path='/Users/gu/.hermes/hermes-agent/.playwright-mcp/page-{timestamp}.yml') 读取
   │
   ├─ Step 2: Baidu AI 摘要快速扫描（新增效率技巧）
   │   在扫描搜索结果时，优先看 Baidu 自己的 AI 摘要（标注"基于文心大模型生成"）
@@ -545,7 +575,8 @@ Cron 触发
   │
   ├─ Step 3: 深入阅读（自主决策）
   │   无需用户确认，根据 Step 2 的判断直接深入最有价值的文章
-  │   用 browser_snapshot(full=true) 获取全文
+  │   方法 A：用 mcp_playwright_browser_navigate + mcp_playwright_browser_snapshot
+  │   方法 B：用 read_file 读取自动保存的 YAML 快照中的正文段
   │   常见坑：Baidu 重定向 → 点击结果链接后跳回搜索页
   │   → 解法：① 换来源重试 ② 反查文章标题搜索 ③ 用 scrapling_fetch 提取原文
   │   ④ 用 autocli read <article_url> 绕过 Baidu 跳转层
@@ -556,40 +587,46 @@ Cron 触发
   │   - 所有信息必须标注来源链接 + 时间 + 可信度
   │   - 重复情报不推送，除非出现新数据
   │   - 无有价值情报时输出 "[SILENT]"（静默模式）
+  │   - 【关键】使用 session_search 查上次 cron 执行的输出，防止重复推送
+  │     session_search(query="懂球帝 情报日报 OR H 情报官", limit=1)
+  │     对比本次找到的头条文章与上次报告的覆盖范围。如果核心事件一致
+  │     （如"央视发布世界杯方案"昨天已报），输出 [SILENT]
   │
   └─ Step 5: 按简报模板自动输出
        Cron 的最终输出会被自动投递到斯塔姆群
        不要额外调用 send_message
 ```
 
-### 百度搜索结果页解析要点
+### 百度搜索结果页解析要点（Playwright MCP）
 
-- 使用 `browser_snapshot()` 获取页面快照，重点关注 `<heading>` 元素内的标题和 `<link>` 内的链接
-- 结果的 ref 编号（如 `@e40`、`@e42`）就是可点击的链接
+- 使用 `mcp_playwright_browser_snapshot()` 获取页面快照，自动保存 YAML 到 `.playwright-mcp/`
+- 用 `read_file` 读取 YAML 文件（绝对路径：`/Users/gu/.hermes/hermes-agent/.playwright-mcp/page-{timestamp}.yml`）
+- 重点关注 `<heading>` 元素内的标题和 `<link>` 内的链接
+- 搜索结果中的 `/url:` 字段包含 Baidu 跳转链接，不要直接点击——它们往往跳回搜索页
 - 不要被"相关搜索"区域分散注意力，但留意它揭示的用户搜索模式
-- 搜索结果通常只显示前 10 条，需要翻页可通过 `browser_click(ref='@e17')` 点击"下一页"
+- 搜索结果通常只显示前 10 条，需要翻页可通过 `mcp_playwright_browser_navigate(url=第2页URL)` 直接导航
 
-### 页面内容获取注意事项
+### 页面内容获取注意事项（Playwright MCP）
 
-- `browser_snapshot(full=false)`（默认）会截断内容 — **使用 `full=true` 获取完整内容**
-- 大量长文章时 snapshot 可能仍被截断（如文章有 400+ 行被 truncate）— 需要多读几个来源交叉补充
+- 使用 `mcp_playwright_browser_snapshot()` 获取 YAML 格式快照（内容会被 truncate，通常在 500 行左右）
+- **YAML 是主要数据源，不是 fallback** — 搜索结果页的 YAML 快照中已包含文章标题（`<heading>`）、发布时间（相邻 `<text>` 元素中的"X天前""YYYY年MM月DD日"）、来源名称（`<link>` 后的文本）、以及足够判断价值的文章摘要（`<text>` 元素）
+- 无需纠结于无法点击 Baidu 跳转链接——YAML 快照本身提供了大部分决策所需的信息
+- 对于需要全文深入阅读的文章，用 `read_file` 读取多份自动保存的 YAML 快照，交叉补充截断的部分
 - 注意百度搜索结果页中的**AI 摘要**（标注"AI导读""内容由AI智能生成"）— 内容可能不精确，需核实
 - 标注"作品含AI生成内容"的文章权威性低，优先读正规媒体
 
 ### 已知坑与Fallback
 
-#### ⚠️ 坑 A — Baidu 文章链接重定向陷阱
-**症状**：点击百度搜索结果中的文章链接（`browser_click(ref='@eXX')`）后，页面跳转回 Baidu 搜索结果页，而非目标文章。你看到的内容和点击前几乎一样。
+#### ⚠️ 坑 A — Baidu 文章链接无法直接点击（Playwright MCP 无 browser_click）
+**症状**：搜索到了有价值的文章标题，但 Playwright MCP 不提供 `browser_click` 工具。无法通过点击搜索结果链接跳转到原文。
 
-**根因**：百度搜索结果链接大多通过百度自己的跳转中间页（`www.baidu.com/link?url=...`）转发。有时中间页处理异常，或者链接指向的不是原始文章而是百度聚合页/AI 摘要页。
-
-**诊断**：点击后检查 `url` 是否停留在 `baidu.com/s?wd=...` 域。如果看到的是搜索页而非文章页，说明命中此坑。
+**根因**：Playwright MCP 的 snapshot 只返回静态的 YAML 文本表示，不支持像旧版 browser 工具那样的 `browser_click(ref='@eXX')` 交互。搜索结果中的 `/url:` 指向的是 Baidu 跳转中间页（`www.baidu.com/link?url=...`），点击后往往跳回搜索页。
 
 **解法**：
-1. 换一个来源链接重试 — 同一条消息通常有多个来源（如转到了 CSDN 博客、知乎等）
-2. 反查文章标题 — 用 `browser_navigate` 直接搜索文章标题（`"热爱不止于球场" 懂球帝`），让百度重新索引
-3. **终极方案 — 改用 scrapling_fetch 提取**：如果浏览器连续点击无效，切换至 `mcp_scrapling_fetch` 工具提取文章内容。该工具绕过百度页面层，直接获取原始 HTML 的文本内容。
-4. 回退到 autocli read：`autocli read <article_url>` 使用 Mozilla Readability 引擎，能正确提取 JS 渲染后的正文
+1. 直接搜索文章标题 — 用 `mcp_playwright_browser_navigate(url=某度搜索文章标题)` 让 Baidu 重新索引
+2. 读 YAML 快照中的 `<text>` 元素 — 大部分文章的精华摘要已在搜索结果页的 snapshot 中
+3. 用 autocli read：`autocli read <article_url>` 使用 Mozilla Readability 引擎提取正文
+4. 用 `mcp_scrapling_fetch_s_fetch_page` 直接提取原文内容
 
 #### ⚠️ 坑 B — Baidu AI 摘要替换原文
 **症状**：点击搜索结果链接后，进入的不是原始文章，而是 Baidu 自己生成的 AI 摘要页面（标题含"续写方案如下""以上内容均由AI生成"等标记，有"深度思考"按钮）。文章内容被 Baidu 自己的 AI 改写并分段列出。
@@ -794,7 +831,7 @@ pirlo gateway
 ### 架构原则
 
 1. **角色优先，再配 Agent** — 先搭角色框架，再根据角色要求选 Agent。不要跳步。每确认一个角色就固定下来，不再重复讨论。
-2. **角色分工铁律 — 已被区分出去的角色绝不合并回去** — 当用户表达了明确的角色分工意愿后，任何试图合并/缩编角色的建议都会引起用户不满。如果某个角色功能有重叠，重新分配职责（如 OpenClaw 从 C 桌面操作员改为 E+H 双角色），而不是把角色删掉合并给别人。**"我目的是分工"** 是用户的明确诉求。
+2. **角色分工铁律 — 已被区分出去的角色绝不合并回去** — 当用户表达了明确的角色分工意愿后，任何试图合并/缩编角色的建议都会引起用户不满。如果某个角色功能有重叠，重新分配职责（如桌面操作交给 TARS、调研情报交给 Intelligence），而不是把角色删掉合并给别人。**"我目的是分工"** 是用户的明确诉求。
 3. **先定灵魂（soul/persona），再配技术** — 每个角色必须先定义人格定位、性格特点、工作习惯、边界范围，再去配置 Agent 和模型。灵魂定义是技术落地的前置步骤，不能跳过或想当然自行添加。
 4. **总控（Coordinator）+ 专家（Specialist）** — 一个总控 Agent（马蒂尼）负责日常沟通、意图理解、任务分配；专业任务派给对应的专家 Agent。
 5. **上下文隔离** — 每个 Agent 独立的会话、记忆、skills，不跨 Agent 污染上下文。
@@ -807,22 +844,22 @@ pirlo gateway
 |------|-------|-------|-----------|------|---------|------|
 | **A 总助** | 马蒂尼 | Hermes | DeepSeek V4 Flash | 任务判断、分派、协调、轻量读取 | 马蒂尼 DM（用户对话入口） | ✅ 已运行 |
 | **B 技术专员** | 内斯塔 | `agent_id='nesta'` | DeepSeek V4 Pro（预处理）→ Claude Code（执行） | 技术任务预处理+复审，delegate 给 Claude Code 执行编码 | 马蒂尼 delegate | ✅ 已注册 named agent，含 soul 人格 |
-| **C 桌面操作员** | — | `agent_id='agent-tars'` | DeepSeek V4 Pro（视觉模型，CLI 参数配） | macOS 桌面操作、截图、打开 App | 马蒂尼 delegate（`agent-tars run --headless --input ... --format json`） | ✅ 已注册 named agent，CLI 已安装 |
+| **C 桌面操作员** | — | `agent_id='agent-tars'` | DeepSeek V4 Flash（视觉模型，CLI 参数配） | macOS 桌面操作、截图、打开 App | 马蒂尼 delegate（`agent-tars run --headless --input ... --format json`） | ✅ 已注册 named agent，CLI 已安装 |
 | **D 代码审查员** | — | `agent_id='codex'` | default（继承父级） | 审查代码、评审方案、质量把关 | 马蒂尼 delegate | ✅ 已修正（type: code_reviewer，去掉 file_modification）|
-| **E 调研专员** | — | `agent_id='openclaw'` | zai/glm-5-turbo（Chrome + DuckDuckGo） | 信息搜集、网页浏览、竞品调研、资料整理（不做分析） | 马蒂尼 delegate | ✅ 已修正（type: researcher，路由从桌面操作改为调研）|
+| **E 调研专员** | — | `agent_id='intelligence'` | web/browser/file | 信息搜集、网页浏览、竞品调研、资料整理（不做分析） | 马蒂尼 delegate | ✅ 已注册 named agent |
 | **F 方案策划** | 皮尔洛 | `agent_id='pirlo'` | DeepSeek V4 Pro | 基础方案框架、卖点提炼、竞品对比、排期初稿 | 马蒂尼 delegate 或用户直接 | ✅ 已注册 named agent，含 soul 人格 |
-| **G 质量审核角色（安布罗西尼）** | 安布罗西尼 | `agent_id='hermes-internal'` | DeepSeek V4 Pro，type: quality_gate | 把关复杂任务质量（审方案逻辑、情报准确性、代码安全） | delegate_task （内部质检，非独立 Bot） | ✅ 已运行，2026-05-13 更名为安布罗西尼
-| **H 情报官** | — | `agent_id='openclaw'`（E 同实例）+ cron | zai/glm-5-turbo | 定时监控、竞品跟踪、情报简报推送至斯塔姆群（与 E 共用同一 OpenClaw 实例） | 后台独立运行 + cron（每天 09:00 首推） | ✅ cron 已创建，推斯塔姆群 |
+| **G 质量审核角色（安布罗西尼）** | 安布罗西尼 | `agent_id='ambrosini'` | read-only quality gate | 把关复杂任务质量（审方案逻辑、情报准确性、代码安全） | delegate_task （内部质检，非独立 Bot） | ✅ 已注册 named agent |
+| **H 情报官** | — | `agent_id='intelligence'`（E 同实例）+ cron | web/browser/file | 定时监控、竞品跟踪、情报简报推送至斯塔姆群 | 后台独立运行 + cron | ✅ 编制保留 |
 
 **关键说明：**
 - **A 总助**已锁版，不再讨论。后续所有角色讨论以 A 已确认为前提推进。
 - **B 技术专员**：内斯塔负责「预处理 + 复审」，Claude Code 负责「最后一公里编码」。预处理=搜项目结构、定位文件、理解模糊需求；复审=检查输出质量。这个决策是在用户承认「不熟悉编程，给的需求一定不清晰」的背景下做出的——中间层在非技术用户场景下价值最大。
-- **C 桌面操作员**：Agent TARS 通过 headless 模式 + JSON 输出与 Hermes 集成。详见 `references/agent-tars-integration.md`。OpenClaw 因桌面操作「不好用」被重新定位。
+- **C 桌面操作员**：Agent TARS 通过 headless 模式 + JSON 输出与 Hermes 集成。详见 `references/agent-tars-integration.md`。OpenClaw 已从当前运行编制移除。
 - **D 代码审查员**：codex 已有且 active，直接采用。
-- **E 调研专员**：OpenClaw 重新定位为调研专员。利用其 Chrome 浏览器操控+DuckDuckGo 搜索+Canvas UI 生成的长板做信息搜集，避开桌面操作交互不好的短板。与 H 情报官共用同一 OpenClaw 实例。
+- **E 调研专员**：Intelligence 负责调研/情报搜集，输出来源、摘要和未知项，不做最终决策。
 - **F 方案策划**：皮尔洛待创建 named agent。DeepSeek V4 Pro 做基础方案工作（框架、卖点提炼、竞品对比、排期初稿），用户核心创意走 ChatGPT 网页版。
-- **G 审核角色**：hermes-internal 已有且 active，read-only 模式适合质检。
-- **H 情报官**：OpenClaw 从 C 桌面操作员改为 H 情报官。与 E 调研专员共用同一 OpenClaw 实例。利用 Chrome 浏览器操控+Canvas UI 生成+独立后台进程的长板做情报监控。
+- **G 审核角色**：ambrosini / hermes-internal 均为 read-only 质检路径，复杂任务优先走 ambrosini。
+- **H 情报官**：由 Intelligence 承担，和 E 调研专员共用同一编制。
 - **推送渠道**：所有 cron 推送（早报、竞品监控等）走斯塔姆群（设为 home channel），不干扰马蒂尼 DM。
 
 ### 角色定义工作流
@@ -1035,7 +1072,7 @@ ps aux | grep "hermes.*profile.*{agent_name}" | grep -v grep
 | 派活 delegate_task | ✅ 自留 | — |
 | 写文件/改代码 | ❌ 派出去 | 皮尔洛 / Claude / deepseek-tui |
 | 执行终端命令 | ❌ 派出去 | 皮尔洛 / Claude |
-| 桌面操作/截图 | ❌ 派出去 | OpenClaw |
+| 桌面操作/截图 | ❌ 派出去 | Agent TARS |
 | 代码审查 | ❌ 派出去 | Codex |
 | 修改系统配置 | ❌ 派出去 | 皮尔洛 + 任务卡 |
 | 深度调研（5+步）| ❌ 派出去 | Hermes 通用执行 |
@@ -1072,7 +1109,7 @@ ps aux | grep "hermes.*profile.*{agent_name}" | grep -v grep
   内斯塔(B) + Codex(D) + hermes-internal(G)
 
 批次 2（内容型，并行）→ 方案策划/调研/桌面操作
-  皮尔洛(F) + OpenClaw(E) + Agent TARS(C)
+  皮尔洛(F) + Intelligence(E) + Agent TARS(C)
 
 批次 3（基础设施验证）→ H 情报官 cron 手动触发 + gateway 日志扫描
 ```
@@ -1095,17 +1132,17 @@ delegate_task(
 | **Codex(D)** | Schema 完整性+P0/P1/P2 分级 | 输出按 P0/P1/P2 分级，明确指出缺少 soul 的 agent |
 | **hermes-internal(G)** | 架构完整性审核 | 输出明确的「+1 通过」或「打回」结论，理由具体可追溯 |
 | **皮尔洛(F)** | 方案框架输出 | 框架结构完整（8 个模块），[待补充] 标注规范，不编造数据 |
-| **OpenClaw(E)** | 网页搜索 | 返回结构化结果（来源+摘要），不空跑 |
+| **Intelligence(E)** | 网页搜索 | 返回结构化结果（来源+摘要），不空跑 |
 | **Agent TARS(C)** | 桌面操作 | 能开应用/截图/返回操作日志 |
 | **H 情报官 cron** | 手动触发验证 | cron job 的 last_status=ok，内容可推送到飞书 |
 
 ### 常见失败模式
 
-#### 1. OpenClaw 搜索超时/低效
+#### 1. 调研 Agent 搜索超时/低效
 
-**症状**：OpenClaw 用 DuckDuckGo HTML 版本搜索时，终端工具连续超时（`[Command timed out after 30s]`），或搜索转为大规模 shell 管道操作（`curl | python3`）触发安全审批。
+**症状**：调研 Agent 用纯终端方式搜索时，终端工具连续超时（`[Command timed out after 30s]`），或搜索转为大规模 shell 管道操作（`curl | python3`）触发安全审批。
 
-**根因**：OpenClaw agent 被配置为 `toolsets: [terminal, file]`，没有 `browser` 或 `web_search` 工具集。它只能通过 shell 调用 `curl` + 手动 HTML 解析来搜索，而不是使用原生的 web_search 工具。
+**根因**：调研 Agent 被配置为 `toolsets: [terminal, file]`，没有 `web` 或 `browser` 工具集。它只能通过 shell 调用 `curl` + 手动 HTML 解析来搜索，而不是使用原生 web/browser 工具。
 
 **影响**：一次简单搜索可能消耗 23 次工具调用、67 万输入 tokens、160 秒——效率极低。
 
@@ -1117,8 +1154,8 @@ result['tool_trace'].count(lambda t: t['tool'] == 'terminal')
 ```
 
 **修复方向**：
-- 给 OpenClaw 的 subagent_profile 加 `web_search`/`browser` toolsets
-- 或通过 Hermes 主控直接用 web_search 工具搜索，把结果传给 OpenClaw 做结构化整理
+- 给 Intelligence 的 subagent_profile 加 `web`/`browser` toolsets
+- 或通过 Hermes 主控直接用 web_search 工具搜索，把结果传给 Intelligence 做结构化整理
 - 或使用 autocli / bb-browser 等专用 CLI 工具替代 DuckDuckGo 页面爬取
 
 #### 2. DeepSeek API 子Agent 推理超时
@@ -1196,6 +1233,79 @@ gateway.error.log 输出的关键警告和错误。
 
 ---
 
+## §K — Hermes 生态工具评估协议
+
+> 当 Gu 问「帮我评估一下这个工具」或你主动发现新工具时使用。系统性地检查状态、评估价值、分配优先级、沉淀到 Obsidian。
+
+### 适用场景
+- Gu 提出一批工具让评估（如 "评估这5个"）
+- 你发现 Hermes 生态中有值得引入的新工具
+- 需要决定装不装、什么时候装
+
+### 评估维度（5 轴）
+
+| 轴 | 检查内容 | 常用命令 |
+|----|---------|---------|
+| **状态** | 是否已安装/运行/配置？ | `which` / `npm list -g` / `ps aux` / `curl health` / `cat config.yaml` |
+| **集成难度** | 安装要不要 sudo？依赖多不多？配置复杂吗？ | 实际试安装 / 看 npm/brew 包大小 |
+| **价值密度** | 解决了什么具体痛点？有没有替代方案已在用？ | 读 README / 看用户场景匹配度 |
+| **风险/开销** | 是否与现有架构冲突？资源占用？维护成本？ | 架构对比 / 检查 port / 内存 |
+| **优先级** | P0-P3：急不急？ | P0=立刻用 / P1=推荐装 / P2=可装可不装 / P3=搁置 |
+
+### 数据采集方法
+
+**轻量级（适用于 1-2 个简单工具）：自己查**
+- `npm search <name>` / `npm view <name>` 获取版本和描述
+- `which` / `--version` 检查是否已装
+- `cat 配置` 检查配置状态
+
+**批量级（适用于 3+ 工具或深度评估）：派给内斯塔并行**
+- 把多个工具打包成一个 `delegate_task`，goal 里列出并行子任务
+- 每个工具给清楚：装什么、检查什么、验证什么
+- 内斯塔跑完后汇总表格，你再做合成判断
+
+### 评估文档化
+
+评估结果必须存入 Obsidian `3-知识/wiki/_tools/`：
+
+**已有工具（Repomix、TokScale 等）** → 更新现有 `_tools/<Name>.md`，追加「评估结论」表格
+**新工具** → 创建 `_tools/<Name>.md`，结构：
+```
+# 工具名
+
+> 来源 · 一句话定位
+
+## 是什么
+
+## 当前状态（YYYY-MM-DD）
+
+| 维度 | 状态 |
+
+## 评估结论
+
+| 优先级 | 集成难度 | 风险 | 价值 |
+
+## 相关
+```
+
+同时更新 `_tools/README.md` 索引表（工具名 | 描述 | 状态一列）。
+
+### 反模式
+
+| ❌ 不要 | ✅ 应该 |
+|--------|--------|
+| 自己挨个 `npm install` 测试每个工具 | 批量任务派给内斯塔并行跑 |
+| 只给结论不给数据（"建议装"） | 给状态检查结果 + 架构冲突判断 + 优先级 |
+| 评估完不记录 | 写入 Obsidian _tools/，下次直接查 |
+| 接受用户默认的优先级（他说"很感兴趣"就 P1）| 独立评估后给 P0-P3 建议 |
+| 同时推多个 P0 给用户 | 排好优先级，标注冲突，让用户选 |
+
+### 参考案例
+
+2026-05-21 的 5 工具批量评估（Repomix、TokScale、Hindsight、Hermes Workspace、Mission Control）是此协议的完整执行示范。评估结果已存入 `3-知识/wiki/_tools/` 对应的 5 个文件。
+
+---
+
 ## §G — Agent 路由决策指南
 
 > Absorbed from `agent-routing-guide` (archived). Use when deciding which agent to delegate a task to.
@@ -1244,9 +1354,9 @@ gateway.error.log 输出的关键警告和错误。
 |---------|------|------|------|
 | 代码修改/文件操作 | claude（file_executor） | deepseek-tui | 有 file+terminal，改文件 |
 | 代码审查/实现方案 | codex（代码审查员） | — | 只看不写 |
-| 桌面操作/自动化 | agent-tars（桌面操作员） | openclaw（旧） | 新桌面操作 Agent |
-| 搜索/调研 | openclaw（调研专员） | 浏览器/autocli | 已重新定位为 researcher |
-| 情报监控 | openclaw（情报官） | cron 定时跑 | 同 openclaw 实例，cron 驱动 |
+| 桌面操作/自动化 | agent-tars（桌面操作员） | computer-use | 新桌面操作 Agent |
+| 搜索/调研 | intelligence（调研专员） | 浏览器/autocli | 调研/情报专职 |
+| 情报监控 | intelligence（情报官） | cron 定时跑 | cron 驱动 |
 | 技术预处理+复审 | nesta（技术专员） | claude | 中间层，读项目+写任务包 |
 | 方案策划/文档撰写 | pirlo（方案策划） | — | 纯文职，无 terminal |
 | 分析/决策/方案审核 | hermes-internal（审核角色） | — | readonly，deepseek-v4-pro |

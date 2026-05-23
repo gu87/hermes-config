@@ -2,7 +2,7 @@
 name: competitive-intelligence
 description: Gather recent marketing/competitive intelligence (24h-7d window). Monitor brand sponsorships, campaign launches, social media trends. Produce structured briefings with source tables.
 agents:
-  - openclaw
+  - intelligence
   - hermes-internal
 related_skills:
   - last30days
@@ -97,12 +97,40 @@ For each promising article found:
 5. Note the source's reliability
 6. If browser_navigate returns 404 or paywall: return to search results and use snippet data. Do not retry or seek alternative URLs.
 
-### Fallback: When Google News Fails
+### Fallback: When Google Fails
 
+**Google CAPTCHA/block pattern:** `browser_navigate` to Google or Google News may redirect to `google.com/sorry/` (CAPTCHA challenge page). This happens especially from headless browsers without residential proxies. When you see `google.com/sorry/` in the URL, **do not retry** — Google will continue blocking.
+
+**Recommended fallback: Bing via Playwright**
+
+```
+https://www.bing.com/search?q=<url-encoded-query>&setlang=zh-cn
+```
+
+Bing consistently works with Playwright browser MCP and returns comparable results. For Chinese-language queries, use `setlang=zh-cn` and add `&filters=ex1%3a%22ez1%22` for time-based filtering.
+
+**Bing's Chinese news index** is thinner than Google's but adequate for daily briefings on World Cup/domestic topics. Expect fewer specialist/ad-trade results (ADWEEK, LBBOnline) but sufficient mainstream news coverage.
+
+**Additional fallback notes:**
+- **MiniMax web_search API rate limit**: when it returns `usage limit exceeded` (error 2056), switch immediately to Playwright browser MCP. Do not retry MiniMax — it will remain exhausted for the session.
 - **Chinese searches from China IP may return zero results** with `tbs=qdr:d` + Chinese keywords. Fall back to English queries or remove the time filter.
 - **Google redirects to `google.com.hk`** from China IPs — cached `.hk` results may differ from `.com` results. This is usually fine but note the variance.
 - **Rate limiting**: keep to 5-8 page loads per session; no rapid-fire navigation.
 - **Sina finance URLs break frequently**: The redirect URL from search results often leads to "页面没有找到". If the first URL fails, move to the next source rather than retrying.
+
+### Reliable Chinese News Sources (Deep-Dive Ready)
+
+These sources consistently return readable article content via `browser_navigate` + `browser_snapshot`:
+
+| Source | URL Pattern | Reliability | Notes |
+|--------|-------------|-------------|-------|
+| 腾讯新闻 (QQ.com) | `news.qq.com/rain/a/...` | High | Full article text readable; heavy page elements (sidebars, ad slots) but main article content is accessible |
+| 澎湃新闻 (thepaper.cn) | `thepaper.cn/newsDetail_*` | High | Already documented in skill — consistently readable |
+| 北京日报 (BJD.com.cn) | `news.bjd.com.cn/...` | High | Reliable access |
+| 直播吧 (zhibo8.com) | `news.zhibo8.com/...` | Medium | Sports news aggregator; readable |
+| CCTV | `tv.cctv.com/...` | High | Official broadcaster — reliable |
+
+**Sources that remain snippet-only** (as already documented): sina.com.cn, 163.com, campaignasia.com, adage.com, yicaiglobal.com, designrush.com — do not attempt deep-dive.
 
 ## Source Reliability Scale
 
