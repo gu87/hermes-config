@@ -54,6 +54,24 @@ Expected healthy state:
 - Hermes MCP test for `openchronicle` connects and discovers tools.
 - WebUI GET succeeds and returns content on `127.0.0.1:8787`.
 
+## System Self-Check
+
+When Gu asks for an Agent/system self-check, read machine-readable runtime sources in this order. Do not infer current state from SOUL.md, channel prompts, memory, or old chat summaries.
+
+1. Gateway process: `launchctl print gui/$(id -u)/ai.hermes.gateway`.
+2. Agent registry: `/Users/gu/.hermes/hermes-agent/configs/managed_agents/agents.yaml` plus `/Users/gu/.hermes/config/agent-registry.json`.
+3. Model routing: resolve each agent's `model_ref` against `/Users/gu/.hermes/config/models.yaml`; if an agent has `runtime`, report the external runtime instead of treating it as a normal child AIAgent.
+4. Delegation limits: read `/Users/gu/.hermes/config.yaml` under `delegation`.
+5. Memory pressure: compare `/Users/gu/.hermes/memories/MEMORY.md` with `memory.memory_char_limit`, and `/Users/gu/.hermes/memories/user-profile.md` with `memory.user_char_limit`.
+6. Recent errors: inspect `/Users/gu/.hermes/logs/gateway.log` and `/Users/gu/.hermes/logs/gateway.error.log` after the latest startup timestamp.
+
+Important pitfalls:
+
+- `browser.camofox.managed_persistence` is browser profile persistence, not Agent session persistence.
+- `delegation.model` is only the default delegation model; named agents can override it via `model_ref` or external `runtime`.
+- `agent-registry.json` lives under `/Users/gu/.hermes/config/agent-registry.json`, not `/Users/gu/.hermes/agent-registry.json`.
+- `claude` runs through external Claude Code CLI; `codex` runs through external Codex CLI.
+
 ## Restart Commands
 
 Restart gateways through Hermes CLI:

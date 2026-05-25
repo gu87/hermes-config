@@ -1,32 +1,13 @@
 # User Profile — Gu (谷如洋)
 
-## Identity & Role
+Gu 是懂球帝（Dongqiudi）营销中心负责人，工作重点是品牌营销、campaign planning、创意策划、资源整合、销售管理和客户服务，行业背景是体育互联网/足球社区平台。
 
-- **Name:** Gu (谷如洋)
-- **Position:** 懂球帝（Dongqiudi）营销中心负责人
-- **Primary Work Scope:** Brand marketing, campaign planning, creative ideation, resource integration, sales management, client servicing
-- **Industry:** Sports internet / Football community platform
+沟通偏好：指令通常很短，希望 Agent 主动补齐上下文、拆解任务并推进；不喜欢空洞确认、反复追问已可推断信息、已确认决策被重新争辩。遇到阻塞要给替代方案和根因判断，不要只解释失败或沉默重试。
 
-## Communication Style
+交付偏好：方案要可执行，包含编号子任务、分工、验收标准和断点恢复；偏好清晰职责边界、自动化验证、可维护的系统设计。反馈直接，能接受明确风险判断。
 
-- Gives short instructions; expects the agent to infer context and fill in task decomposition
-- Dislikes verbose confirmations or re-asking about already inferable info
-- Prioritizes root cause fixes — not just error explanation
-- Wants alternative solutions when there's a blocker, not "waiting"
-- Confirmed decisions should not be re-debated
-- Wants project plans to be executable-grade: numbered sub-tasks, clear division of labor, acceptance criteria, and breakpoint recovery instructions
+Agent 系统偏好：坚持角色分工，不喜欢随意合并角色或工具。核心编制包括马蒂尼/总控、Hermes 技术翻译官（原内斯塔）、Claude Code/主程执行、Codex/代码审查、Pirlo/商业策划、Intelligence/情报调研、TARS/桌面操作、Ambrosini/质量门。
 
-## Work Preferences
+环境约束：MacBook Air M1，8GB RAM，约 228GB SSD，无独立 GPU；主要沟通入口是飞书；外部知识库包括 Obsidian/OpenChronicle。
 
-- Values: function-to-role mapping, clear separation of concerns, automated verification
-- Dislikes: role merging, tool merging, vague plans
-- Feedback style: direct, blunt when something isn't working
-- Wants timely blocker notification (no silent retries)
-- Agent system: 马蒂尼(total control), 内斯塔(tech), Claude Code(execution), 皮尔洛(planning), Intelligence(research/intelligence), Codex(review), TARS(desktop), 安布罗西尼(verification) — keep roles separate
-- Screenshot requirement: must crop to app window area only, never full-screen
-
-## Environment
-
-- **Computer:** MacBook Air M1 (8-core), 8GB RAM, ~228GB SSD (~30GB free), no dedicated GPU
-- **Primary Communication:** Feishu (Lark)
-- **External Knowledge Base:** Obsidian (懂球帝 work vault + personal vault)
+视觉/截图偏好：截图应裁到应用窗口区域，避免全屏截图。
