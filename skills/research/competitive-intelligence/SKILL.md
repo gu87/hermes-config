@@ -129,8 +129,23 @@ These sources consistently return readable article content via `browser_navigate
 | 北京日报 (BJD.com.cn) | `news.bjd.com.cn/...` | High | Reliable access |
 | 直播吧 (zhibo8.com) | `news.zhibo8.com/...` | Medium | Sports news aggregator; readable |
 | CCTV | `tv.cctv.com/...` | High | Official broadcaster — reliable |
+| 央视广告频道 | `1118.cctv.com/...` | High | CCTV advertising/marketing channel; publishes World Cup media plans, sponsor event coverage (总台总经理室). Critical source for sponsor intelligence: content matrix, program sponsorship inventory, 300+ attendee lists |
 
 **Sources that remain snippet-only** (as already documented): sina.com.cn, 163.com, campaignasia.com, adage.com, yicaiglobal.com, designrush.com — do not attempt deep-dive.
+
+### Reliable English Sources (Deep-Dive Ready)
+
+These English-language sources consistently return readable article content. Add to this list as new sources are verified:
+
+| Source | URL Pattern | Reliability | Notes |
+|--------|-------------|-------------|-------|
+| ESPN | `espn.com/soccer/story/_/id/...` | High | Full article text readable; paywall on some features but news stories are accessible |
+| SB Nation | `*.sbnation.com/...` | Medium-High | Sports blog network (Vox Media). Article text fully readable; heavy page elements (sidebars, widgets) but main content accessible |
+| Branding in Asia | `brandinginasia.com/...` | Medium | Marketing trade publication; readable |
+| Reuters | `reuters.com/...` | High | Full article; may have paywall after N articles |
+| Bloomberg | `bloomberg.com/...` | High | Paywall on most articles; use snippet for deep content |
+
+**SB Nation verification note (2026-05-25):** Article loaded fully via Google News redirect without paywall, CAPTCHA, or 404. Navigation path: Google News search → `browser_navigate(google_news_read_url)` → auto-redirect to `cominghomenewcastle.sbnation.com` → full article readable.
 
 ## Source Reliability Scale
 
@@ -145,7 +160,45 @@ Label unavailable sources in the source table (e.g., "X/Twitter: unavailable wit
 
 ## Report Format
 
-Use this structured Asian-format briefing for cron-delivered or on-demand reports:
+### Format A: Three-Tier Daily Briefing (推荐用于定时早/晚报)
+
+适用于 cron 自动推送的每日简报。设计原则：三种读法（30秒→2分钟→5分钟），每条信号带行动建议。
+
+```markdown
+# 🏆 懂球帝世界杯营销日报 | {日期} {早报/晚报}
+
+## 📌 今日三信号
+> ① {最重要的一条}
+> ② {第二条}
+> ③ {第三条}
+
+---
+
+## 📰 品牌动态
+
+### 1. {品牌名} {动作}
+**时间**：{时间}
+**动作**：{2-3句描述}
+**为什么重要**：{1句}
+**对我们意味着**：{1句可执行的行动建议}
+**来源**：{来源}
+
+（2-5条，按P0→P1→P2优先级排列）
+
+---
+
+## 🧠 启示与行动
+- {具体可执行的建议}
+- {每条能直接拿去用，不做「值得关注」「建议跟踪」这类空话}
+```
+
+**Format A 规则：**
+- 「三信号」固定3条，是全文核心。读者只看这3条就能掌握大局
+- 「品牌动态」每条必须包含「为什么重要」和「对我们意味着」
+- 「启示与行动」每条必须可操作。❌ 「值得关注」「建议跟踪」 ✅ 「百威双星模式可推给蒙牛，周二前出一版概念」
+- 无新信息时输出 `[SILENT]`
+
+### Format B: One-Shot Research Briefing (用于按需深度调研)
 
 ```markdown
 # 【标题】<Topic> - YYYY.MM.DD
@@ -174,13 +227,28 @@ Use this structured Asian-format briefing for cron-delivered or on-demand report
 ## Steps
 
 1. **Understand scope** — time window (24h/7d/30d), topic (World Cup / industry / competitor), delivery method (cron vs on-demand)
-2. **Run 3-5 parallel queries** covering different angles using browser_navigate
-3. **Snapshot each result page** and extract headlines
-4. **Deep-dive into 3-5 most relevant articles** using browser_navigate
-5. **Compile findings** organized by theme/change, not by source
-6. **Assess source reliability** — distinguish sourced findings from interpretation
-7. **Format output** as structured briefing with source table and judgment section
-8. **If cron-delivered**: output the briefing directly (no file save needed — the cron system delivers the response text)
+2. **Define P0/P1/P2 brand priority** (for cron briefings):
+   - **P0** — 合作客户 + 世界杯官方赞助商 + 足球品牌。这些是重点监控对象，品牌动态中优先报道
+   - **P1** — 竞品媒体/平台。其他体育媒体的世界杯营销动作
+   - **P2** — 行业趋势。营销创新案例、品牌合作新模式
+3. **Run 3-5 parallel queries** covering different angles using browser_navigate. P0 brands get dedicated queries. P1/P2 are caught by broader sweeps.
+4. **Snapshot each result page** and extract headlines
+5. **Deep-dive into 3-5 most relevant articles** using browser_navigate. Prefer P0 brand articles.
+6. **Compile findings** organized by theme/change, not by source. P0 findings go first.
+7. **Assess source reliability** — distinguish sourced findings from interpretation
+8. **Format output** as structured briefing (Format A for daily cron, Format B for one-shot research)
+9. **If cron-delivered**: output the briefing directly (no file save needed — the cron system delivers the response text)
+
+### 早/晚报拆分模式
+
+对于每日定时的竞品情报，推荐早晚两次抓取以覆盖全球时区：
+
+| 报次 | 时间 | 覆盖范围 |
+|------|------|---------|
+| 早报 | 08:30 | 欧美夜盘（美股收盘到亚洲开盘）+ 前一天亚洲未覆盖信息 |
+| 晚报 | 18:00 | 中国日盘 + 欧洲上午动态 |
+
+两个 cron job 使用相同的 prompt 模板（仅 `{早报/晚报}` 标记不同），时间窗口均为过去12小时。
 
 ## Common Pitfalls
 
@@ -193,10 +261,19 @@ Use this structured Asian-format briefing for cron-delivered or on-demand report
 - **"Stay on search results" technique**: After browser_navigate to Google search results, read article summaries from the browser_snapshot directly. Individual article links (sina.com.cn, 163.com, adage.com, campaignasia.com, designrush.com) frequently return 404, redirect to homepage, or hit paywalls. The search result snippets alone contain 70-80% of actionable intelligence for a daily briefing. Only deep-dive articles from reliably accessible sources (thepaper.cn, reuters.com, bloomberg.com).
 - When a browser_navigate to an external article returns 404 or paywall, do NOT waste turns trying alternative routes. Return to the search results page and use snippet data.
 - Chinese news site URL fragility: sina.com.cn, 163.com URLs from Google search results frequently return "页面没有找到" or redirect to homepage. Prefer thepaper.cn articles which are reliably readable. For paywalled sources (campaignasia.com, yicaiglobal.com, adage.com), the Google News snippet may be your best data source.
-- Google News "展开" button: Clicking the expand button on a Google News article card reveals more snippet text but may not navigate to the article. Use browser_navigate for the article link directly.
+- Google News "展开" button is fragile: Clicking the expand button on a Google News article card may fail with Playwright (both ref= and text= selectors). Do not fight it — instead, use browser_navigate with the full Google News read URL (https://news.google.com/read/... from the link's href). This auto-redirects to the actual article page for many sources. If the redirect works, you get full article text. If it fails (404/paywall), fall back to snippet data.
+- Google News when=1d filter is directional, not strict: Google News' time filter is approximate — especially for Chinese-language queries, it frequently returns results from 4 to 21+ days ago. Do not dismiss older articles that appear within this filter; they are often the best available intelligence for a narrow window. Supplement Chinese queries with English searches (which have stricter time filtering) to find truly recent items.
 - same_tool_failure_warning (3+ consecutive failures of the same tool) is a signal to change approach immediately, not retry.
 
 ## Related Skills
 
 - `last30days` — 30-day community/social trend research (uses bundled Python engine, different source coverage)
 - `hermes-cron-management` — cron job lifecycle and troubleshooting
+
+## Reference Files
+
+- `references/world-cup-daily-briefing-cron-template.md` — 懂球帝世界杯营销日报 cron prompt 模板（三层结构 + P0/P1/P2 + 早/晚报拆分）
+- `references/world-cup-2026-05-25-session.md` — 2026-05-25早报session记录：搜索查询、关键发现、FIFA赞助商层级体系知识库、工具使用经验
+- `references/world-cup-2026-05-23-session.md` — 2026-05-23 session记录
+- `references/world-cup-2026-05-16-session.md` — 2026-05-16 session记录
+- `references/world-cup-2026-05-14-session.md` — 2026-05-14 session记录

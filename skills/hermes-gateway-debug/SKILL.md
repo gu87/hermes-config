@@ -1,9 +1,15 @@
 ---
 name: hermes-gateway-debug
-description: "Hermes Gateway 飞书连接断开排查 + 飞书API Permission排查。UMBRELLA: 合并了 feishu-permission-debug。"
-tags: [hermes, gateway, feishu, troubleshooting]
+description: 'Hermes Gateway 飞书连接断开排查 + 飞书API Permission排查。UMBRELLA: 合并了 feishu-permission-debug。'
+tags:
+- hermes
+- gateway
+- feishu
+- troubleshooting
 category: hermes-multi-agent-research
-agents: [hermes, nesta]
+agents:
+- hermes
+- hermes-internal
 ---
 
 # Hermes Gateway 排障指南
@@ -339,6 +345,185 @@ curl -s "https://open.feishu.cn/open-apis/drive/v1/files" \
 ### 备注
 - 授权链接里的 `token_type=tenant` 表示开通的是 tenant 级权限（应用身份）
 - 发布应用后权限才生效，不是改完就立即可用
+
+---
+
+## §H — DNS/Proxy 导致的飞书断连排查（Clash DNS 间歇故障型）
+
+### 症状
+
+- `gateway.log` 持续报 `Failed to resolve 'open.feishu.cn' ([Errno 8] nodename nor servname provided, or not known)`
+- 每 ~2 分钟一次重试，持续 15-20 分钟，然后自动恢复
+- `gateway_state.json` 的 `feishu.state` 显示 `connected`（过时状态），但实际已断连
+- `dig open.feishu.cn` 直接执行能正常返回 IP（系统 DNS 正常）
+
+### 根因
+
+Clash 代理（或同类 proxy 工具）的内置 DNS（fake-ip 模式）通向远端 DNS 服务器时连接失败。Python HTTP 客户端（httpx/requests）走代理出口时使用 Clash 的 DNS，而 Clash 的 DNS 上游挂掉了 → DNS 解析失败 → WebSocket 连接断开 → 不断重试 → Clash DNS 上游恢复后自动重连成功。
+
+### 排查流程
+
+```bash
+# 1. 确认系统代理状态
+scutil --proxy | grep HTTPEnable        # 0=关闭, 1=开启
+networksetup -getwebproxy Wi-Fi         # 另一种检查方式
+
+# 2. 确认 Clash 进程存活
+ps aux | grep -i clash | grep -v grep
+
+# 3. 确认直接 DNS 正常
+dig open.feishu.cn +short               # 应返回 IP
+
+# 4. 确认问题出在代理出口
+curl -x http://localhost:7890 -s --max-time 5 https://open.feishu.cn
+# HTTP 000 (curl error) 或长时间卡住 = 代理 DNS 挂了
+
+# 5. 查日志确认故障时间段
+grep "Failed to resolve 'open.feishu.cn'" ~/.hermes/logs/gateway.log | tail -5
+grep "receive message loop exit" ~/.hermes/logs/gateway.log | tail -3
+```
+
+### 修复方案
+
+**方案 A（推荐 — 根治 DNS 依赖问题）：**
+```bash
+# 让飞书 DNS 跳过代理，走系统 DNS
+echo '# Feishu DNS - bypass proxy' >> ~/.zshrc
+echo 'export NO_PROXY="$NO_PROXY,open.feishu.cn,feishu.cn,open.larksuite.com,larksuite.com"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**方案 B（恢复 Clash DNS 后重启网关）：**
+```bash
+# 先确认 Clash 恢复正常
+curl -x http://localhost:7890 -s --max-time 5 https://open.feishu.cn
+# 然后重启网关
+hermes gateway restart
+```
+
+**方案 C（绕过 launchd 直接后台跑）：**
+详见上方「备用方案：直接拉起 Gateway（绕过 launchd）」章节。
+
+### 关键区分
+
+| 症状 | 诊断 | 处理 |
+|------|------|------|
+| `Errno 8 nodename nor servname` + 系统 DNS 正常 | Clash DNS 挂了 | 方案 A 或等自动恢复 |
+| `Errno 8` + 系统 DNS 也失败 | 网络全局断连 | 检查 VPN/代理/路由器 |
+| SSL errors + DNS 正常 | 证书/TLS 问题 | 不同路径，不属此节 |
+
+---
+
+## §I — 多 Agent 系统完整快照流程
+
+当用户要求「看看我的 Agent 状态」「系统快照」「检查各 Agent 情况」时，按以下固定流程执行：
+
+### 流程步骤
+
+```bash
+# Step 1 — 进程概览
+ps aux | grep hermes | grep -v grep         # 所有 Hermes 相关进程
+ps aux | grep gateway | grep -v grep        # 所有 Gateway 进程
+lsof -i -P | grep LISTEN                    # 所有监听端口
+
+# Step 2 — Agent 注册表
+cat ~/.hermes/config/agent-registry.json    # 完整的 agent 定义和路由规则
+# 或通过 WebUI: http://localhost:8787 → Backend agents
+
+# Step 3 — Gateway 状态
+cat ~/.hermes/gateway_state.json            # 连接状态 (可能过时!)
+
+# Step 4 — 错误日志
+tail -20 ~/.hermes/logs/errors.log          # 最新错误
+grep "ERROR" ~/.hermes/logs/errors.log | tail -10
+
+# Step 5 — Gateway 日志（飞书连接状态）
+grep -E "connected|disconnected|close frame|reset" ~/.hermes/logs/gateway.log | tail -10
+
+# Step 6 — 资源监控
+vm_stat | head -5                           # 内存
+df -h / | tail -1                           # 磁盘
+sysctl hw.memsize | awk '{print $2/1024/1024/1024 " GB"}'  # 总内存
+```
+
+### 输出格式
+
+以表格形式呈现以下维度：
+1. **网关进程表** — PID、角色、运行时长、CPU%、内存%
+2. **Agent 注册表** — 名称、类型、权限模式、隔离级别、工具集
+3. **端口映射** — 端口号 → 服务名
+4. **问题列表** — 严重度（🔴🟡⚪）、症状、根因、修复方案
+5. **定时任务** — 名称、状态、调度时间
+
+### 信号词
+
+用户说「快照」「检查情况」「各 Agent 状态」「系统诊断」「看看系统」时，直接执行此流程。
+
+### 已知陷阱
+
+- `gateway_state.json` 的 feishu.state 可能已过时 — 必须结合日志验证
+- feishu 断连但 gateway 进程活着 → 检查 DNS/proxy（见 §H）
+- agent-registry.json 在 `~/.hermes/config/`，不在 `~/.hermes/` 根目录
+
+---
+
+## §J — GitHub/Git MCP 故障排查
+
+### 症状
+
+- MCP server 'github' 反复断连，`unhandled errors in a TaskGroup (1 sub-exception)`
+- 5 次重试后放弃，约 90 秒后重新开始新一轮
+
+### 排查流程
+
+```bash
+# 1. 确认配置
+grep -A8 "github:" ~/.hermes/config.yaml
+
+# 2. 确认网络可达
+curl -s --max-time 10 https://api.github.com
+# 正常 → API 可达
+
+# 3. 检查 gh auth
+gh auth status
+# ✓ Logged in → token 存在
+# Token scopes 应包含 repo, workflow
+
+# 4. 如果是 Copilot MCP 端点 (api.githubcopilot.com/mcp/)
+# 需要检查 Copilot 本地缓存
+ls ~/.config/github-copilot/ 2>/dev/null
+gh copilot --version 2>/dev/null
+```
+
+### 两类配置及对应故障
+
+| 配置类型 | config.yaml 格式 | 认证方式 | 常见故障 |
+|---------|-----------------|---------|---------|
+| **Copilot MCP** | `url: https://api.githubcopilot.com/mcp/` + `headers.Authorization: Bearer ***` | Copilot 订阅 token | HTTP 400 = token 过期或无 Copilot 订阅 |
+| **Command MCP** | `command: npx` + `args: [-y, @modelcontextprotocol/server-github]` | gh token (OAuth) | 依赖本地环境，需确认 npx 可用 |
+
+### Copilot 端点的修复
+
+```bash
+# 1. 重新认证 Copilot
+gh copilot auth login    # 交互式，需用户手动操作
+
+# 2. 如果不需要 Copilot，切到 command 模式：
+# 改 config.yaml 中的 github MCP 配置为：
+# github:
+#   enabled: true
+#   command: npx
+#   args:
+#   - -y
+#   - @modelcontextprotocol/server-github
+#   timeout: 120
+# 然后重启网关
+
+# 3. 验证修复
+curl -s --max-time 10 -H "Authorization: Bearer $(gh auth token)" \
+  https://api.githubcopilot.com/mcp/ 2>&1
+# 返回非 400 = 修复成功
+```
 
 ---
 

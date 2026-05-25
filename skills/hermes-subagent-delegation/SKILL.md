@@ -1,9 +1,16 @@
 ---
 name: hermes-subagent-delegation
-description: "子Agent（Named Agent / delegation）配置与排障 — agent-registry.json、config.yaml delegation段、toolsets隔离、模型继承"
-tags: [hermes, subagent, delegation, troubleshooting]
+description: 子Agent（Named Agent / delegation）配置与排障 — agent-registry.json、config.yaml
+  delegation段、toolsets隔离、模型继承
+tags:
+- hermes
+- subagent
+- delegation
+- troubleshooting
 category: hermes
-agents: [hermes, nesta]
+agents:
+- hermes
+- hermes-internal
 ---
 
 # Hermes 子Agent Delegation 配置与排障
@@ -947,7 +954,60 @@ Managed agent preflight rejected delegation: Agent claude cannot handle risk R0
 - 先告诉用户「claude 被风险策略拦了，换 deepseek-tui」，然后立即执行
 - 换 agent 后还超时（如长编译），走第三步主会话兜底
 
-### 22. 长耗时编译/部署任务——子 Agent 启动，主会话监控
+### 23. managed_persistence=false 导致每次 delegate 冷启动（Token 浪费）
+
+**问题**：`config.yaml` 中 `managed_persistence: false` 意味着每次 `delegate_task` 都 spawn 全新子 Agent 会话，重载完整 system prompt + skill 列表 + tool 定义。一次「内斯塔→Claude Code→内斯塔验收」链路 = 三次独立冷启动，每次 ~10-15K tokens 的 system prompt。
+
+**诊断**：
+```bash
+grep "managed_persistence" ~/.hermes/config.yaml
+# false → 每次冷启动
+```
+
+**修复**：改为 `true`（需确认 Hermes 版本支持 Managed Agents 持久化）。
+
+**关联**：`hermes-system-diagnostics` skill 的「Token/成本效率审计」章节。
+
+### 24. orchestrator_enabled + max_spawn_depth=1 = 死能力
+
+**问题**：`orchestrator_enabled: true` 允许子 Agent 以 orchestrator 角色继续派活，但 `max_spawn_depth: 1` 禁止任何嵌套。结果：orchestrator 角色永远无法实际派活，是死能力，只增加了系统判断分支。
+
+**诊断**：
+```bash
+grep -E "orchestrator|max_spawn_depth" ~/.hermes/config.yaml
+```
+
+**修复**：要么 `orchestrator_enabled: false`（关闭），要么 `max_spawn_depth: 2`（启用一层嵌套）。
+
+### 25. agent-registry.json 不存在——Agent 路由无机器可读注册表
+
+**问题**：SOUL.md 和 channel prompt 中定义了 Agent 编制和路由规则，但 `~/.hermes/config/agent-registry.json` 文件不存在。路由逻辑依赖飞书 channel prompt 里的中文自然语言描述——prompt 被截断或改动就崩。
+
+**诊断**：
+```bash
+ls -la ~/.hermes/config/agent-registry.json 2>/dev/null || echo "MISSING"
+```
+
+**影响**：Agent 定义散落多处（SOUL.md、config.yaml channel_prompts），无单一权威源。
+
+### 26. 所有子Agent 统一模型——无成本分级
+
+**问题**：delegation 段配置了统一模型（如 `deepseek-v4-flash`），无论 Intelligence 做调研还是 deepseek-tui 做机械小改，全用同一个模型。调研/推理任务应配更强的模型（如 deepseek-v4-pro），机械任务才用 flash。
+
+**诊断**：
+```bash
+grep -A 3 "delegation:" ~/.hermes/config.yaml | grep -E "model|provider"
+```
+
+**理想配置**：不同 agent 类型配不同模型。目前 Hermes delegation 不支持 per-agent 模型覆盖（只能通过 agent-registry.json 的 `subagent_profile.model`），但该文件不存在。
+
+### 27. SOUL.md Agent 列表与 delegate_task enum 漂移
+
+**问题**：SOUL.md 提到 `claude-code-opus`、`claude-code-deepseek` 等 Agent，但 delegate_task 的 agent_id enum 中只有 `claude` 和 `deepseek-tui`。文档和代码不同步。
+
+**诊断**：对比 SOUL.md 的 Agent 分工表和 delegate_task 调用时的 agent_id 选项。
+
+**修复**：要么在 delegate_tool.py enum 中添加缺失的 agent_id，要么更新 SOUL.md 去掉不存在的 Agent。
 
 **问题**：`cargo build --release`、大型 `npm build`、`docker build` 等长任务派给子 Agent 时，父 Agent 的 `dialog_timeout_s` 会截断正在执行的子会话。但后台进程（cargo、npm、docker）通常不随子会话销毁，继续在后台运行。
 

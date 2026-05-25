@@ -1,4 +1,8 @@
 ---
+name: cloud-storage-mount
+description: Mount cloud drives through Alist WebDAV and CloudDrive 2 on macOS.
+agents: [agent-tars, hermes-internal]
+---
 # Cloud Storage Mount — 云存储挂载
 
 将网盘通过 Alist（WebDAV 网关层）→ CloudDrive 2（FUSE 挂载层）挂载为 macOS 本地文件夹。

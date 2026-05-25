@@ -1,9 +1,19 @@
 ---
 name: nextjs-standalone-deployment
-description: Deploy and debug Next.js apps built with output:standalone on macOS — standalone server pattern, health checks, crash debugging.
-tags: [nextjs, deployment, node, macos, debugging]
+description: Deploy and debug Next.js apps built with output:standalone on macOS —
+  standalone server pattern, health checks, crash debugging.
+tags:
+- nextjs
+- deployment
+- node
+- macos
+- debugging
 version: 1.0.0
-agents: [deepseek-tui, claude, codex, nesta]
+agents:
+- deepseek-tui
+- claude
+- codex
+- hermes-internal
 ---
 
 # Next.js Standalone Deployment

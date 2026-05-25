@@ -1,16 +1,22 @@
 ---
 name: open-design-ops
-description: "Install, configure, debug, and operate Open Design (nexu-io/open-design) — the open-source Claude Design alternative for generating HTML PPT/decks via local AI agents."
+description: Install, configure, debug, and operate Open Design (nexu-io/open-design)
+  — the open-source Claude Design alternative for generating HTML PPT/decks via local
+  AI agents.
 triggers:
-  - open design
-  - opendesign
-  - od
-  - guizang-ppt
-  - magazine-web-ppt
-  - claude design alternative
-  - html ppt generation
-  - html deck generation
-agents: [deepseek-tui, claude, codex, nesta]
+- open design
+- opendesign
+- od
+- guizang-ppt
+- magazine-web-ppt
+- claude design alternative
+- html ppt generation
+- html deck generation
+agents:
+- deepseek-tui
+- claude
+- codex
+- hermes-internal
 ---
 
 # Open Design Ops

@@ -1,14 +1,27 @@
 ---
 name: github-repo-management
-description: "Clone/create/fork repos; manage remotes, releases."
-version: 1.1.0
+description: Clone/create/fork repos; manage remotes, releases.
+version: 1.2.0
 author: Hermes Agent
 license: MIT
 metadata:
   hermes:
-    tags: [GitHub, Repositories, Git, Releases, Secrets, Configuration]
-    related_skills: [github-auth, github-pr-workflow, github-issues]
-agents: [deepseek-tui, claude, codex, nesta]
+    tags:
+    - GitHub
+    - Repositories
+    - Git
+    - Releases
+    - Secrets
+    - Configuration
+    related_skills:
+    - github-auth
+    - github-pr-workflow
+    - github-issues
+agents:
+- deepseek-tui
+- claude
+- codex
+- hermes-internal
 ---
 
 # GitHub Repository Management
@@ -368,6 +381,33 @@ gh release create v1.0.0 ./dist/binary --title "v1.0.0" --notes "Release notes"
 gh release list
 gh release download v1.0.0 --dir ./downloads
 ```
+
+### Downloading Release Binaries
+
+When downloading release assets (DMGs, binaries, zips), prefer this fallback chain:
+
+```bash
+# Strategy 1: gh CLI (most reliable)
+gh release download <TAG> -R <owner/repo> -p "<glob-pattern>" -D <output-dir>
+
+# Strategy 2: curl with proxy fallback when gh not available or gh fails
+# (curl to github.com:443 frequently times out on some networks)
+export HTTPS_PROXY=http://127.0.0.1:7890
+export HTTP_PROXY=http://127.0.0.1:7890
+curl -L -o <output-path> "https://github.com/<owner>/<repo>/releases/download/<tag>/<filename>"
+
+# Strategy 3: Download via browser API to get the actual asset URL
+# (sometimes the raw download URL redirects; follow with -L)
+```
+
+**Pitfalls:**
+- `curl` to `github.com:443` frequently TCP-timeouts on networks where ping and API work fine — this is a known pattern, not a transient failure. Do NOT retry curl more than once; switch to `gh` or proxy immediately.
+- When reporting failure, distinguish "curl timed out" (network-level, try proxy/gh) from "404/unauthorized" (access/permission issue, different fix).
+- macOS DMG install — see `references/github-release-macos-install.md`.
+
+### macOS Release Binary Install
+
+When the release contains a `.dmg` for macOS app installation, use the flow documented in `references/github-release-macos-install.md`.
 
 **With curl:**
 

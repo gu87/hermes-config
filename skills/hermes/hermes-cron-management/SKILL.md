@@ -186,7 +186,102 @@ If cron jobs need to survive Mac sleep/wake cycles:
 2. **Job fires but does nothing** → Prompt overwritten (see Pitfall #1). Restore from jobs.json backup or session history.
 3. **Chrome CDP fails** → Chrome not started with `--remote-debugging-port`. Start it.
 4. **Python import error** → Dependency not installed in Hermes venv. Use `uv pip install`.
-5. **Output not delivered** → `deliver` field misconfigured. Set to `"origin"` to send output back to the Feishu/Telegram chat that created the job.
+5. **Output not delivered** → `deliver` field misconfigured. Use `"origin"` to send output back to the creating chat. For Feishu groups, explicitly set `deliver="feishu:<chat_id>"` — never assume `"origin"` will resolve to the right group.
+
+### ⚠️ PITFALL #3: `deliver` defaults to `"origin"` on create
+
+When using `cronjob(action='create')`, the `deliver` parameter defaults to `"origin"` — which sends output to the conversation that created the job. If you're creating the job from one chat but want output in a different group, you MUST explicitly set `deliver`.
+
+```python
+# WRONG — output goes to current chat, not the target group
+cronjob(action='create', name='daily-briefing', schedule='0 9 * * *', prompt='...')
+
+# CORRECT — output goes to specific Feishu group
+cronjob(action='create', name='daily-briefing', schedule='0 9 * * *',
+         prompt='...', deliver='feishu:oc_xxxxxxxxxxxxx')
+```
+
+**Fix after creation:**
+```python
+cronjob(action='update', job_id='xxx', deliver='feishu:oc_xxxxxxxxxxxxx')
+```
+
+### ⚠️ PITFALL #4: `repeat` Parameter Type Sensitivity
+
+When using `cronjob(action='create')` with `schedule` in standard cron format (e.g., `"30 8 * * *"`), the `repeat` parameter may cause `'<=' not supported between instances of 'str' and 'int'` errors depending on the backend version. If this occurs:
+
+```python
+# May fail with comparison error
+cronjob(action='create', name='daily-report', schedule='30 8 * * *', repeat='forever', ...)
+
+# WORKAROUND: Omit repeat entirely — default is 'forever' for recurring schedules
+cronjob(action='create', name='daily-report', schedule='30 8 * * *', ...)
+```
+
+### Multi-Cron Merge Pattern
+
+When replacing N old cron jobs with M new ones (e.g., merging two separate reports into one):
+
+1. **Remove old jobs first** to avoid duplicate delivery
+2. **Create new jobs with explicit `deliver`** set to target group
+3. **Verify with `cronjob(action='list')`** that old jobs are gone and new jobs show correct schedule + deliver target
+
+## Marketing Intelligence Cron Pattern
+
+For competitive/marketing intelligence reports that need global timezone coverage, use the **dual-run pattern** with a structured three-tier output format.
+
+### Dual-Run Scheduling
+
+| Run | Time | Coverage |
+|-----|------|----------|
+| Morning | 08:30 | Overnight European/US market activity |
+| Evening | 18:00 | Asian/EU daytime activity |
+
+Both jobs share the same prompt template — only the report label (早报/晚报) differs.
+
+### Three-Tier Output Structure
+
+```
+# 🏆 {Report Title} | {Date} 早报/晚报
+
+## 📌 今日三信号
+> ① {top signal}
+> ② {second}
+> ③ {third}
+
+## 📰 品牌动态
+### 1. {Brand} {Action}
+**时间**：{time}
+**动作**：{2-3 sentence description}
+**为什么重要**：{1 line}
+**对我们意味着**：{1 actionable line}
+**来源**：{source}
+(2-5 items, P0 brands first)
+
+## 🧠 启示与行动
+- {Specific actionable advice}
+```
+
+### P0/P1/P2 Priority System
+
+Embed a priority filter in the prompt so the cron agent knows which brands to prioritize:
+
+- **P0 — Focus Brands**: The user's clients + key sponsors. Keep this list explicit and updatable.
+- **P1 — Competitors**: Rival platforms' moves.
+- **P2 — Industry Trends**: Broader marketing innovation.
+
+### [SILENT] Pattern
+
+When there's genuinely no new information in the search window, the agent should output exactly `[SILENT]` to suppress empty delivery. The cron system recognizes this and won't push a blank message.
+
+### Prompt Design Rules
+
+1. **Actionable, not encyclopedic** — every item must answer "so what for us?"
+2. **Fixed signal count** — top-level signals always exactly 3, forcing prioritization
+3. **No vague verbs** — ban "值得关注", "建议跟踪" in the 启示 section. Every suggestion must be executable.
+4. **Updatable brand list** — keep P0 brands in the prompt itself (the user corrects it directly), not in external files that go stale.
+
+Full prompt template: `references/marketing-intelligence-prompt-template.md`
 
 ## One-Shot Job Design Pattern (e.g., Time-Sensitive Purchases)
 

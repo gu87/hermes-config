@@ -21,7 +21,105 @@ agents: [hermes]
 
 # Hermes 知识架构
 
-> 最后更新: 2026-05-18 (v7 — 增加 authority map；校准 Agent-Scoped Skills 当前状态)
+> 最后更新: 2026-05-21 (v9 — 增加 SOUL/Identity Document Upgrade Workflow)
+
+### Session Context Recovery Protocol (会话超时恢复)
+
+**Trigger**: User returns after session expired (inactivity timeout), references previous context you've lost. User signals: "我不是说了吗", "你忘了？", "别明天了现在做", "检查就过时无更新？".
+
+### Problem
+Hermes sessions expire due to inactivity timeout. When the user returns, the conversation context is gone — no memory of what was being discussed or what task was in progress. The user doesn't know sessions expire and interprets the loss as you not paying attention.
+
+### Recovery Flow
+
+1. **Don't say "no context" without trying.** Immediately gather evidence in parallel:
+   - `mcp_openchronicle_recent_activity(limit=10)` — past 30 min of user activity
+   - `mcp_openchronicle_current_context()` — what's on the user's screen right now
+   - `session_search(query=<keywords from user message>, limit=3)` — past conversations
+   - `cronjob(list)` — pending scheduled tasks
+
+2. **Cross-reference signals**: Feishu docs open, Codex conversations, Chrome tabs → topic clues. Recent activity apps → task type. Session search → past task context.
+
+3. **Make an informed hypothesis**: say what you CAN infer, even if partial.
+
+4. **If still can't find context, explain the root cause (session expiry), not "I checked and found nothing"**:
+   - ❌ "检查就过时无更新？" (sounds like negligence)
+   - ✅ "上一轮会话超时过期了，上下文被清空。你甩个链接或说个主题，我立刻开搞。"
+
+5. **Proactively suggest next steps** based on what you CAN infer from screen state and recent activity.
+
+### Preventative: context anchoring
+During long multi-step tasks (VNS pipeline, deployment, image gen), periodically save critical task state to memory so it survives session expiry.
+
+### Pitfalls — communicate what you're doing
+- ❌ Don't ask "what were we talking about?" — frustrates users who assume persistence
+- ❌ Don't claim "checked but nothing found" — explain WHY (session expiry)
+- ✅ Do check OpenChronicle + session_search + current_context in parallel
+
+---
+
+## SOUL/Identity Document Upgrade Workflow
+
+**Trigger**: You and the user have confirmed a new architectural principle, behavioral rule, or decision framework that changes how Hermes operates. Needs to be preserved beyond the current conversation.
+
+### The Problem
+
+Without a preservation workflow, architectural decisions live only in the current conversation's context. When the session ends, the reasoning disappears. The next time the same question arises, you start from scratch — or worse, do the wrong thing because the rule wasn't recorded.
+
+### Workflow: Backup → Modify → Document → Index → Memory
+
+When the user confirms a new principle (e.g. Managed Agents framework, anti-pattern ban):
+
+1. **Backup**: Before modifying SOUL.md, copy the current version to `~/.hermes/docs/soul-backups/SOUL.md.<YYYY-MM-DD>`
+   - `mkdir -p ~/.hermes/docs/soul-backups`
+   - `cp ~/.hermes/SOUL.md ~/.hermes/docs/soul-backups/SOUL.md.<YYYY-MM-DD>`
+
+2. **Modify SOUL.md**: Write the principle into SOUL.md's relevant section (usually "四、核心哲学").
+   - Keep it dense — one paragraph per principle, not session-level detail.
+   - The principle itself goes in SOUL.md. The reasoning and analysis behind it goes in step 3.
+
+3. **Document in Obsidian Wiki**: Create a permanent decision record under the appropriate theme directory.
+   - For Hermes architecture: `个人知识库/3-知识/wiki/AI与Agent/Hermes/<决策主题>.md`
+   - Include: core framework (comparison table if applicable), decision timeline, key reasoning, related file links, decision status (locked/finalized)
+   - Also include any deep analysis that arose during the conversation (e.g. "本体升级 vs SOUL 升级" comparison)
+
+4. **Update the Obsidian index.md**:
+   - Add a file reference to `AI与Agent/index.md` Hermes table
+   - Add a "最新决策" annotation under the section heading if this is a major decision
+
+5. **Record in Memory**: Add a compact summary entry to persistent memory so the next session knows what happened:
+   ```
+   2026-05-21: Managed Agents(编制制)架构确认为 Hermes 操作模式，写入 SOUL.md 核心哲学 + Obsidian wiki。SOUL 备份: ~/.hermes/docs/soul-backups/SOUL.md.2026-05-21。
+   ```
+
+### Pitfalls
+- ❌ Don't skip the backup — SOUL.md has no version control of its own
+- ❌ Don't write session-level narrative into SOUL.md — SOUL is for principles, not story
+- ❌ Don't create the Obsidian doc without updating index.md — it becomes invisible
+- ❌ Don't leave the reasoning only in conversation — it won't survive session expiry
+- ✅ Do keep the Obsidian entry decision-focused: what was decided, when, by whom, and why. Not the full conversation transcript.
+- ✅ Do mark the decision as "已确认，锁定（不重新讨论）" when the user explicitly rules out re-debating it
+
+### Related: Hermes本体升级 vs SOUL升级 comparison
+
+When a Hermes engine upgrade (`hermes update`) is pending alongside a SOUL upgrade, the two are fundamentally different and should not be confused:
+
+| Dimension | Engine Upgrade (hermes update) | Identity Upgrade (SOUL.md) |
+|-----------|-------------------------------|---------------------------|
+| What changes | Code, tools, providers, gateway protocols | Behavior rules, decision frameworks, role boundaries |
+| Who writes it | Upstream Hermes team | Gu + Hermes together |
+| Gu's role | Consumer — decides whether to merge | Designer — defines how the system operates |
+| Rollback | `git reset` backup branch | Patch SOUL.md back (no formal versioning) |
+| Verification | Tests + gateway checks + feishu replies | Observe subsequent conversations for compliance |
+| Risk | Service outage, merge conflicts, feature regressions | Rule inconsistency, behavioral drift |
+| Recommendation | Wait for tagged releases; don't chase every commit | Always backup before modifying — communicate what you're doing
+- ❌ Don't ask "what were we talking about?" — frustrates users who assume persistence
+- ❌ Don't claim "checked but nothing found" — explain WHY (session expiry)
+- ✅ Do check OpenChronicle + session_search + current_context in parallel
+
+---
+
+
 > 核心原则：Memory 是 always-on 稳定注入层，Skill 是流程库，Obsidian 是外脑和全量持久存储，session_search 是短期会话线索。当前主 Agent 有核心 skill 白名单；子 Agent 的 registry `skills` 白名单机制已被代码支持，但 live registry 尚未填充显式 skills 数组。
 
 ---

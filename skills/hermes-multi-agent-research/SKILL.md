@@ -1,8 +1,11 @@
 ---
 name: hermes-multi-agent-research
-description: "UMBRELLA: 多Agent研究确认 + Agent路由决策 + Claude Code委托协议 + 常驻Worker + GitHub调研 + 竞品情报研究 + Web工具链 + 工具评估协议。合并了 agent-routing-guide 和 hermes-claude-code-delegation。"
+description: 'UMBRELLA: 多Agent研究确认 + Agent路由决策 + Claude Code委托协议 + 常驻Worker + GitHub调研
+  + 竞品情报研究 + Web工具链 + 工具评估协议。合并了 agent-routing-guide 和 hermes-claude-code-delegation。'
 category: autonomous-ai-agents
-agents: [hermes, nesta]
+agents:
+- hermes
+- hermes-internal
 ---
 
 # Hermes 多Agent研究确认执行工作流 + 委托模式（UMBRELLA）
@@ -746,6 +749,7 @@ Cron 触发
 Baidu 搜索实操坑点（重定向循环、AI 摘要页替换、autocli 搜索失败）见 `references/baidu-research-pitfalls-2026-05-16.md`。
 Cron 情报自动化执行实录（2026-05-18，含并行搜索工具行为验证）见 `references/cron-intelligence-2026-05-18.md`。
 HTML Anything 项目评估（nexu-io/html-anything, 2k⭐, Agent 时代的 HTML 编辑器）见 `references/html-anything-research.md`。
+CodeGraph 项目调研（colbymchenry/codegraph, 18k⭐, 预索引代码知识图谱 MCP 服务器，Hermes Agent 原生集成）见 `references/codegraph-research.md`。
 
 ---
 

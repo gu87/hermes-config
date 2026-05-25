@@ -1,8 +1,16 @@
 ---
 name: macos-resource-diagnostics
 description: macOS 资源诊断 + 系统扩展排障。检查系统规格、磁盘分析、内存评估、kext/dext 状态。
-tags: [macos, diagnostics, disk, cleanup, macfuse, system-extension]
-agents: [nesta, hermes]
+tags:
+- macos
+- diagnostics
+- disk
+- cleanup
+- macfuse
+- system-extension
+agents:
+- hermes-internal
+- hermes
 ---
 
 ## When to Use

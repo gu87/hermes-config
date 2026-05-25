@@ -1,14 +1,16 @@
 ---
 name: browser-automation-for-blocked-sites
-description: Automate browser-based tasks on sites that block curl/terminal API calls using Chrome DevTools Protocol (CDP) with stealth considerations.
+description: Automate browser-based tasks on sites that block curl/terminal API calls
+  using Chrome DevTools Protocol (CDP) with stealth considerations.
 triggers:
-  - site blocks curl with 405/WAF
-  - need to maintain browser session (cookies, localStorage)
-  - website has bot detection that resists CDP clicks
-  - HS512 vs HS256 JWT token difference (browser vs curl auth)
-  - Google/ddg-search blocked from terminal (network timeout, 408, empty results)
-  - need structured news search results from cron job / automated research
-agents: [openclaw, agent-tars]
+- site blocks curl with 405/WAF
+- need to maintain browser session (cookies, localStorage)
+- website has bot detection that resists CDP clicks
+- HS512 vs HS256 JWT token difference (browser vs curl auth)
+- Google/ddg-search blocked from terminal (network timeout, 408, empty results)
+- need structured news search results from cron job / automated research
+agents:
+- agent-tars
 ---
 
 # Browser Automation for Sites That Block Curl

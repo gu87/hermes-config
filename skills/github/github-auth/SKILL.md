@@ -1,14 +1,28 @@
 ---
 name: github-auth
-description: "GitHub auth setup: HTTPS tokens, SSH keys, gh CLI login."
+description: 'GitHub auth setup: HTTPS tokens, SSH keys, gh CLI login.'
 version: 1.1.0
 author: Hermes Agent
 license: MIT
 metadata:
   hermes:
-    tags: [GitHub, Authentication, Git, gh-cli, SSH, Setup]
-    related_skills: [github-pr-workflow, github-code-review, github-issues, github-repo-management]
-agents: [deepseek-tui, claude, codex, nesta]
+    tags:
+    - GitHub
+    - Authentication
+    - Git
+    - gh-cli
+    - SSH
+    - Setup
+    related_skills:
+    - github-pr-workflow
+    - github-code-review
+    - github-issues
+    - github-repo-management
+agents:
+- deepseek-tui
+- claude
+- codex
+- hermes-internal
 ---
 
 # GitHub Authentication Setup
