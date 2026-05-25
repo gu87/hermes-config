@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.html-anything</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/pnpm</string>
+        <string>dev</string>
+        <string>-p</string>
+        <string>14732</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/gu/Projects/html-anything</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/gu/.hermes/logs/html-anything.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/gu/.hermes/logs/html-anything.error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/gu</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/gu/.local/bin</string>
+        <key>NODE_ENV</key>
+        <string>development</string>
+    </dict>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

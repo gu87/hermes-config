@@ -46,7 +46,8 @@
           "spike",
           "open-design-ops",
           "design-md",
-          "comfyui"
+          "comfyui",
+          "html-anything"
         ]
       },
       "aliases": [
@@ -146,7 +147,8 @@
           "sketch",
           "baoyu-infographic",
           "baoyu-comic",
-          "architecture-diagram"
+          "architecture-diagram",
+          "html-anything"
         ]
       },
       "aliases": [

@@ -2,6 +2,7 @@
 name: html-anything
 description: HTML Anything — 本地 AI 驱动的 HTML 编辑器。将 Markdown/CSV/JSON/SQL 等内容通过本地 Claude Code 自动生成精美 HTML，支持 75 套模板和公众号/小红书/知乎一键发布。
 tags: [html-anything, html-editor, agent, publishing, wechat, xiaohongshu]
+agents: [claude, pirlo, hermes-internal]
 ---
 
 # HTML Anything 集成
@@ -10,24 +11,28 @@ tags: [html-anything, html-editor, agent, publishing, wechat, xiaohongshu]
 
 - **项目路径**: `~/Projects/html-anything/`
 - **运行端口**: `14732`
-- **启动命令**: `cd ~/Projects/html-anything && pnpm dev -p 14732`
+- **服务管理**: launchd 常驻（`~/Library/LaunchAgents/com.html-anything.plist`），开机自启 + 崩溃自动重启
 
 ## 服务管理
 
-### 启动
-```bash
-cd ~/Projects/html-anything && pnpm dev -p 14732
-```
-建议用 background 模式启动。
-
-### 验证运行
+### 当前状态
 ```bash
 curl -s -o /dev/null -w "%{http_code}" http://localhost:14732
-# → 200
+# 200 = 正常运行
+```
+
+### 重启
+```bash
+launchctl kickstart -k gui/$(id -u)/com.html-anything
 ```
 
 ### 停止
 ```bash
+launchctl unload ~/Library/LaunchAgents/com.html-anything.plist
+```
+
+### 开机自启
+已通过 launchd 配置 `KeepAlive=true` + `RunAtLoad=true`，Mac 重启后自动恢复，无需手动干预。
 lsof -ti :14732 | xargs kill
 ```
 
@@ -71,18 +76,43 @@ lsof -ti :14732 | xargs kill
 
 完整列表: `~/Projects/html-anything/src/lib/templates/skills/` (共 75 个模板)
 
-## 调用方式 (从 Hermes)
+## 在 Hermes 多Agent系统中使用
 
-### 直接 curl 调用
+### 触发词
+
+当 Gu 说「输出 HTML」「生成页面」「做一张卡片」「转成网页」「用 HTML Anything」时，Coordinator 应委托 **Claude** 或 **Pirlo** 调用此服务。
+
+### Agent 调用流程
+
+**委托给 Claude（代码/技术类 HTML）:**
+```
+Claude，用 HTML-Anything 把以下内容转成 HTML：
+- 模板: article-magazine
+- 内容: [Markdown 内容]
+- 保存到: /Users/gu/Desktop/output.html
+```
+
+**委托给 Pirlo（方案/策划类 HTML）:**
+```
+Pirlo，把这个商业方案用 HTML-Anything 生成 deck-pitch 模板的 HTML，
+保存到桌面。
+```
+
+### 标准 curl 命令（Agent 执行）
+
 ```bash
-curl -X POST http://localhost:14732/api/convert \
+# 第一步：确认服务在线
+curl -s -o /dev/null -w "%{http_code}" http://localhost:14732
+
+# 第二步：发送内容，生成 HTML
+curl -s -X POST http://localhost:14732/api/convert \
   -H "Content-Type: application/json" \
   -d '{
     "agent": "claude",
-    "templateId": "card-xiaohongshu",
-    "content": "你的Markdown内容...",
+    "templateId": "article-magazine",
+    "content": "你的 Markdown 内容（需要 JSON 转义）",
     "format": "markdown"
-  }'
+  }' > /tmp/html-output.txt
 ```
 
 ### 从 Hermes 工具调用
@@ -113,12 +143,10 @@ if result["output"] == "200":
 
 ## 注意事项
 
-1. **服务必须保持运行** — 当前是 `pnpm dev` 开发模式，若 Mac 重启需手动重新启动
+1. **服务常驻** — 已通过 launchd 配置开机自启 + KeepAlive，Mac 重启后自动恢复
 2. **依赖 Claude Code** — 调用时使用 `agent: "claude"`，需要 `claude` CLI 已登录
 3. **磁盘空间** — 项目约 13MB，pnpm install 后约几百 MB
 4. **首次请求较慢** — 因为涉及 Claude Code 冷启动和模板加载
 5. **SSE 流式响应** — API 返回的是流式数据，会逐步返回生成的 HTML
 6. **端口 14732** — 非常用端口，避免被其他项目冲突
-7. **委托模式** — 涉及安装/部署/配置 HTML Anything 的任务，委托 内斯塔 执行（用户反感我自己直接干）
-8. **系统重启后需手动重启** — `pnpm dev` 是前台进程，Mac 重启后服务不会自启。需手动 `cd ~/Projects/html-anything && pnpm dev -p 14732`
-9. **SSE 解析** — API 返回的是流式 SSE 数据。用 Python JSON 解析器提取 delta 事件中的 text 字段。详见 `references/sse-parsing.md`
+7. **委托模式** — 涉及安装/部署/配置 HTML Anything 的任务，委托 技术翻译官 执行

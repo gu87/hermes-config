@@ -357,6 +357,22 @@ vim ~/.hermes/.env
 hermes gateway start
 ```
 
+### 5. GitHub Push Protection — 推送前检查敏感信息
+
+**症状**: `git push` 被 GitHub 拒绝，报 `GH013: Repository rule violations — Push cannot contain secrets`，指明 commit 中某文件某行包含 token。
+
+**根因**: `config.yaml` 的 MCP 服务器配置中写入了明文 API token（如 `GITHUB_PERSONAL_ACCESS_TOKEN`、`MINIMAX_API_KEY`）。
+
+**修复**:
+```bash
+# 1. 在 config.yaml 中将明文 token 替换为环境变量引用
+#    GITHUB_PERSONAL_ACCESS_TOKEN: github_pat_xxx  →  ${GITHUB_TOKEN}
+# 2. git commit --amend 重写提交
+# 3. git push
+```
+
+**预防**: 推送前用 `git show HEAD:config.yaml | grep -E "TOKEN|KEY|SECRET"` 快速扫描。`.env` 已在 gitignore 中正确排除，但 config.yaml 中的 MCP 环境变量段容易漏。GitHub 的 push protection 会扫描内容特征码，即使 token 被截断成 `...cZre` 格式也可能被识别。
+
 ## 参考文档
 - `references/model-config-field-map.md` — Gu 的机器实际三层配置映射表，含已验证别名和诊断命令
 - `references/token-efficiency-audit-2026-05-25.md` — 2026-05-25 架构自检实录：配置项发现、浪费模式、修复建议
