@@ -201,11 +201,11 @@ When a Hermes engine upgrade (`hermes update`) is pending alongside a SOUL upgra
 - **典型可迁移条目**：工具路径、版本号、API 端点、端口配置、已修 bug 详情、一次性环境信息
 - **边界**：不默认自动改写核心记忆；除非用户授权或当前任务明确要求整理。
 
-## Agent-Scoped Skills — 部分落地，待补 registry 白名单（2026-05-18 校准）
+## Agent-Scoped Skills — 已完全落地（2026-05-25 校准）
 
-> **状态：代码能力已支持，当前配置未完全启用 registry 白名单**
-> 设计目标仍是方案 A 双向锁定（agent-registry 白名单 + SKILL.md 标签双重过滤）。
-> 当前 live registry `/Users/gu/.hermes/config/agent-registry.json` 尚未给各 Agent 填充 `subagent_profile.skills` 数组，所以不能把现状描述为「registry 白名单已完全落地」。
+> **状态：已完全启用 registry 白名单**
+> 当前 live registry `/Users/gu/.hermes/config/agent-registry.json` 中所有 8 个 Agent 均已填充 `subagent_profile.skills` 数组。
+> SKILL.md frontmatter 的 `agents:` 标签与 registry 白名单双向锁定。
 > 实施详情见 Obsidian wiki：[[Hermes/Agent-Scoped-Skills-设计提案]]
 
 ### 解决的问题
@@ -225,7 +225,7 @@ When a Hermes engine upgrade (`hermes update`) is pending alongside a SOUL upgra
 1. `SKILL.md` frontmatter → `agents: [...]` 标签，声明 intended visibility
 2. `agent/prompt_builder.py` → `_skill_matches_agent()` 过滤 + `build_skills_system_prompt(agent_id=...)`
 3. `HERMES_CORE_SKILLS` 常量 → 主 Agent 只显示核心 skill
-4. `agent-registry.json` → 代码支持读取每个 Agent 的 `subagent_profile.skills` 白名单，但当前 live registry 尚未填充该字段
+4. `agent-registry.json` → 每个 Agent 的 `subagent_profile.skills` 白名单已完全填充（2026-05-25），子 Agent 启动时注入 scoped skills
 5. `tools/delegate_tool.py` → 如果 registry 中存在 `profile.skills`，子 Agent 启动时会注入 scoped skills + `skills` 工具集
 
 ### 代码文件

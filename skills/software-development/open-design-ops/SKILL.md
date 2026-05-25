@@ -13,9 +13,7 @@ triggers:
 - html ppt generation
 - html deck generation
 agents:
-- deepseek-tui
 - claude
-- codex
 - hermes-internal
 ---
 
@@ -24,7 +22,9 @@ agents:
 > Repository: [nexu-io/open-design](https://github.com/nexu-io/open-design)
 > Architecture: Next.js 16 web + Node/Express daemon + local agent CLI (Claude Code / Codex / etc.)
 > Output: HTML slides (not .pptx) — rendered in browser, can be exported as PDF
-> Last updated: 2026-05-05 — Write bug fixed, ports corrected
+> Ports: Daemon :14733 | Web UI :17456
+> Service: launchd 常驻, 开机自启 + KeepAlive
+> Last updated: 2026-05-25 — Integrated into Hermes multi-agent system
 
 ---
 
@@ -65,25 +65,22 @@ pnpm --filter @open-design/web build
 
 > **Note:** `npm run build -w apps/daemon` doesn't work with npm workspaces. Use `cd apps/daemon && npx tsc -p tsconfig.json` or `pnpm --filter @open-design/daemon build`.
 
-### Start (separate terminals)
+### Start (launchd 管理)
+服务已通过 launchd 常驻，无需手动启动。
 
 ```bash
-# Terminal 1 — Daemon (API server)
-cd apps/daemon
-OD_WEB_PORT=3000 node dist/cli.js --no-open
-# Default port: 7456 (not 17456!)
+# 检查状态
+curl -s -o /dev/null -w "%{http_code}" http://localhost:14733/api/skills  # daemon
+curl -s -o /dev/null -w "%{http_code}" http://localhost:17456               # web UI
 
-# Terminal 2 — Web UI (Next.js)
-cd apps/web
-npx next dev
-# Default port: 3000 (not 5173!)
+# 重启
+launchctl kickstart -k gui/$(id -u)/com.open-design
 ```
-
-Access at http://localhost:3000
+Access at http://localhost:17456
 
 ### Start (one command — via tools-dev)
 ```bash
-pnpm tools-dev run web --daemon-port 7456 --web-port 3000
+pnpm tools-dev run web --daemon-port 14733 --web-port 17456
 ```
 
 ### Stop
@@ -98,7 +95,7 @@ When daemon and web run on **different ports** (7456 vs 3000), the daemon's CORS
 OD_WEB_PORT=3000 node dist/cli.js --no-open
 ```
 
-The daemon reads `OD_WEB_PORT` to add `http://localhost:3000` (and https variant) to its allowed origins list. See `buildAllowedOrigins()` in `server.ts`.
+The daemon reads `OD_WEB_PORT` to add `http://localhost:17456` (and https variant) to its allowed origins list. See `buildAllowedOrigins()` in `server.ts`.
 
 ---
 
@@ -106,7 +103,7 @@ The daemon reads `OD_WEB_PORT` to add `http://localhost:3000` (and https variant
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Daemon (Express, :7456)  ←→  Web (Next.js, :3000)  │
+│  Daemon (Express, :14733)  ←→  Web (Next.js, :17456)  │
 │       ↓                                          │
 │  spawns agent CLI (Claude Code / Codex)           │
 │  with cwd = .od/projects/<id>/                    │
@@ -136,8 +133,8 @@ const instructionPrompt = [
 This is where the original conflict lived (see Fixes section).
 
 Key components:
-- **Daemon**: Express server at port **7456** (default), handles chat SSE, agent spawning, artifact management
-- **Web**: Next.js 16 frontend at port **3000** (default)
+- **Daemon**: Express server at port **14733**, handles chat SSE, agent spawning, artifact management
+- **Web**: Next.js 16 frontend at port **17456**
 - **Agent**: Claude Code / Codex spawned as child process with `cwd` pinned to project dir
 - **Projects**: Stored at `.od/projects/<id>/`, SQLite at `.od/app.sqlite`
 - **Skills**: `skills/` directory, e.g. `magazine-web-ppt` (guizang-ppt) for magazine-style decks
@@ -148,7 +145,7 @@ Key components:
 ## Generating a PPT
 
 ### Via Web UI (standard flow)
-1. Open http://localhost:3000
+1. Open http://localhost:17456
 2. Create project → Select tab "Slide deck" → Enter project name
 3. Ensure agent is selected (sidebar: "Local CLI · Claude Code · 2.1.126 (Claude Code)")
 4. Write prompt in chat input → Click Send
@@ -210,7 +207,7 @@ OD_WEB_PORT=3000 node dist/cli.js --no-open
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `daemon 403: {"error":"Cross-origin requests are not allowed"}` | Web UI on :3000, daemon on :7456 — daemon doesn't trust the web origin | Pass `OD_WEB_PORT=3000` when starting daemon |
+| `daemon 403: {"error":"Cross-origin requests are not allowed"}` | Web UI on :17456, daemon on :14733 — daemon doesn't trust the web origin | Pass `OD_WEB_PORT=3000` when starting daemon |
 
 The daemon's `buildAllowedOrigins()` (server.ts:1014) only trusts loopback addresses + the bind host + `OD_WEB_PORT`. Without the env var, the Web UI's origin is not in the allowed set.
 
@@ -235,16 +232,16 @@ The daemon's `buildAllowedOrigins()` (server.ts:1014) only trusts loopback addre
 
 ```bash
 # Check daemon responds
-curl -s http://127.0.0.1:7456/api/skills | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Skills: {len(d[\"skills\"])}')"
+curl -s http://127.0.0.1:14733/api/skills | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Skills: {len(d[\"skills\"])}')"
 
 # List available agents
-curl -s http://127.0.0.1:7456/api/agents | python3 -m json.tool
+curl -s http://127.0.0.1:14733/api/agents | python3 -m json.tool
 
 # Check daemon process
-lsof -i :7456
+lsof -i :14733
 
 # Check web is listening
-lsof -i :3000
+lsof -i :17456
 
 # Check agent process
 ps aux | grep claude | grep -v grep | grep -v staam
@@ -269,13 +266,46 @@ cd apps/daemon && npx vitest run -c vitest.config.ts
 
 ---
 
+## 在 Hermes 多Agent系统中使用
+
+### 触发词
+
+当 Gu 说「做 PPT」「生成幻灯片」「deck」「提案」「方案演示」时，Coordinator 应委托 **Claude** 通过 Open Design 生成。
+
+### Agent 调用流程
+
+**委托给 Claude:**
+```
+Claude，用 Open Design 生成一份 PPT：
+- 主题: [主题描述]
+- 风格: magazine-web-ppt
+- 幻灯片数: 15 页
+- 保存到: /Users/gu/Desktop/deck.html
+```
+
+### 访问方式
+- Web UI: http://localhost:17456（交互式生成）
+- Daemon API: http://localhost:14733（curl 调用）
+- 生成的 HTML 在 `.od/projects/<uuid>/` 下
+
+### 服务管理
+```bash
+# 查看状态
+curl -s -o /dev/null -w "%{http_code}" http://localhost:14733/api/skills
+
+# 重启
+launchctl kickstart -k gui/$(id -u)/com.open-design
+```
+
+---
+
 ## User-Facing PPT Generation Guide
 
 > Absorbed from `open-design-ppt` (archived). This section covers the **user's workflow** when daemon + web are already running.
 
 ### Quick Start
 
-1. Open `http://localhost:3000`
+1. Open `http://localhost:17456`
 2. Select **"Slide deck"** tab
 3. Ensure agent is selected: sidebar shows `"Local CLI · Claude Code · 2.1.126 (Claude Code)"`
 4. Enter project name → Click **Create**
@@ -328,5 +358,5 @@ Create a [N]-slide magazine-style deck for "[Campaign Name]".
 |---|----|
 | Can I bypass OD and use Claude Code directly? | Write bug is now fixed — use the Web UI as the primary path. |
 | Where is the generated HTML file? | `.od/projects/<uuid>/<filename>.html` — use the Download button or copy from project dir. |
-| Why daemon on 7456 instead of 17456? | Old docs were incorrect. Default is 7456 (from `startServer` in `server.ts`). |
+| Why daemon on 14733 instead of 7456? | Custom port to avoid conflicts with other services. |
 | Feishu can't send HTML via MEDIA | Feishu limitation — share file path, upload to Feishu Drive, or screenshot. |

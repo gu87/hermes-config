@@ -142,7 +142,7 @@ Agent 认证失败 401/402
 
 ---
 
-## 四、Agent Skills 合理性审计
+## 三、Agent Skills 合理性审计
 
 ### 触发条件
 - 用户问「skills 合理吗」「检查一下 skills 分配」
@@ -187,7 +187,7 @@ skill_view(name) → 读 SKILL.md frontmatter 的 agents: 声明
 
 ---
 
-## 五、自检常见错误（Pitfalls）
+## 四、自检常见错误（Pitfalls）
 
 ### 1. 用系统 prompt 注入标签判断字符数
 
@@ -211,7 +211,7 @@ skill_view(name) → 读 SKILL.md frontmatter 的 agents: 声明
 
 ---
 
-## 三、Token/成本效率审计
+## 五、Token/成本效率审计
 
 ### 触发条件
 - 用户问「多Agent费Token吗」「设计合理吗」「自查一下」
@@ -373,7 +373,44 @@ hermes gateway start
 
 **预防**: 推送前用 `git show HEAD:config.yaml | grep -E "TOKEN|KEY|SECRET"` 快速扫描。`.env` 已在 gitignore 中正确排除，但 config.yaml 中的 MCP 环境变量段容易漏。GitHub 的 push protection 会扫描内容特征码，即使 token 被截断成 `...cZre` 格式也可能被识别。
 
-## 参考文档
+## 八、外部服务注册模式
+
+将本地 HTTP 服务（如 HTML-Anything、Open Design）注册到 Hermes 多Agent系统，确保不掉线且可被 Agent 调用。
+
+### 注册步骤（4 步）
+
+```
+1. 创建 launchd plist → ~/Library/LaunchAgents/com.<service>.plist
+   - RunAtLoad=true + KeepAlive=true → 开机自启 + 崩溃自动重启
+   - 设置正确的 WorkingDirectory、PATH、端口
+   
+2. 更新 skill SKILL.md
+   - frontmatter 加 agents: [claude, pirlo, ...] 声明哪些 Agent 能用
+   - 加「在 Hermes 多Agent系统中使用」段：触发词、委托示例、curl 命令
+   
+3. 注册到 agent-registry.json + agents.yaml
+   - 给能调用该服务的 Agent 添加 skill 到 subagent_profile.skills
+   - 只给有 terminal 能力的 Agent（Claude），不给只读 Agent
+   
+4. 验证
+   - launchctl load → curl 确认 200
+   - 提交到 hermes-config 仓库（含 launchd plist）
+```
+
+### HTML-Anything 实例
+
+| 步骤 | 内容 |
+|------|------|
+| 端口 | 14732 |
+| 调用方 | Claude (terminal, git, mcp-codegraph)、Pirlo (file, 只读) |
+| 调用方式 | `curl -X POST http://localhost:14732/api/convert` |
+| 内存占用 | ~19MB RSS 空载（3 个 Node 进程） |
+
+### 注意事项
+
+- **内存评估**：注册前检查空载 RSS，MacBook Air M1 8GB 环境需谨慎
+- **不与 Open Design 端口冲突**：OD 用 7456+3000，HTML-Anything 用 14732
+- **只给有 terminal 的 Agent**：只读 Agent 加 terminal 会破坏角色边界，宁可少分配
 - `references/model-config-field-map.md` — Gu 的机器实际三层配置映射表，含已验证别名和诊断命令
 - `references/token-efficiency-audit-2026-05-25.md` — 2026-05-25 架构自检实录：配置项发现、浪费模式、修复建议
 - `references/system-audit-2026-05-25.md` — 2026-05-25 全量系统自检实录：5 个关键发现、修复方法、最终状态快照
