@@ -9,6 +9,7 @@
 # Git metadata for this local config repo
 !.gitignore
 !.gitattributes
+!README.md
 
 # Core identity / memory layer
 !SOUL.md
@@ -39,6 +40,20 @@ skills/**/workflows/
 !templates/**/
 !templates/**/*.md
 
+# Configuration layer — the deployment skeleton
+!config.yaml
+!config/
+!config/*.yaml
+!config/*.json
+
+# Bootstrap scripts
+!bin/
+!bin/*
+
+# macOS launchd service definitions (for gateway auto-start)
+!launchd/
+!launchd/*.plist
+
 # Never track nested code repo contents from the parent config repo
 hermes-agent/
 
@@ -63,3 +78,4 @@ subagents/
 temp_vision_images/
 venv/
 node_modules/
+bin/tirith

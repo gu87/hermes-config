@@ -1,0 +1,12 @@
+{
+  "_description": "客户名 → 本地项目目录映射。新增客户时在此文件添加条目即可，无需改路由代码。",
+  "_updated": "2026-05-06",
+  "蒙牛": "/Users/gu/Documents/懂球帝工作/蒙牛",
+  "百威": "/Users/gu/Documents/懂球帝工作/百威",
+  "剑南春": "/Users/gu/Documents/懂球帝工作/剑南春",
+  "咪咕": "/Users/gu/Documents/懂球帝工作/咪咕",
+  "TCL": "/Users/gu/Documents/懂球帝工作/TCL",
+  "京东": "/Users/gu/Documents/懂球帝工作/京东",
+  "PUMA": "/Users/gu/Documents/懂球帝工作/PUMA",
+  "Nike": "/Users/gu/Documents/懂球帝工作/Nike"
+}

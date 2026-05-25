@@ -1,0 +1,234 @@
+# =============================================================================
+# Hermes 模型路由配置 — models.yaml
+# =============================================================================
+# 现状说明：
+#   Hermes 没有内置的"任务类型 → 模型"自动路由。
+#   本配置文件做两件事：
+#   1. 定义所有可用模型（含 endpoint、认证、角色）
+#   2. 配合 delegation 段实现半自动路由
+#   3. 记录 Gu 当前实际使用/弃用状态，避免误路由到即将停用的模型
+#
+# 自动路由（根据任务内容自动选模型）需要 custom wrapper，
+# 暂不实现。可接受折中方案：用 /model 或 delegate_task 时
+# 参考下方 role 声明手动选模型。
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 模型定义
+# -----------------------------------------------------------------------------
+models:
+
+  # ── MiniMax：已降级（Gu 大概率不续费）────────────────────────────────────
+  minimax:
+    provider: minimax-cn
+    base_url: https://api.minimaxi.com/v1
+    api_key_env: MINIMAX_CN_API_KEY
+    model: MiniMax-M2.7-highspeed
+    role: deprecated_cheap_router
+    tokens_per_million: 1.0     # 参考价（相对值）
+    status: deprecated
+    notes: Gu 认为智能不足，大概率不续费；不要作为默认路由
+
+  # ── DeepSeek：当前 Hermes 主力 ───────────────────────────────────────────
+  deepseek_flash:
+    provider: deepseek
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+    model: deepseek-v4-flash
+    role: primary_hermes       # Hermes 当前主控模型
+    tokens_per_million: 0.1
+    status: active
+    notes: 当前 Hermes 默认模型，Gu 反馈好用
+
+  deepseek_pro:
+    provider: deepseek
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+    model: deepseek-v4-pro
+    role: complex_reasoning    # 复杂推理、复杂分析
+    tokens_per_million: 0.5
+    status: active
+    notes: DeepSeek Worker 或复杂推理备选
+
+  # ── Kimi：即将到期，暂不续费 ─────────────────────────────────────────────
+  kimi_k26:
+    provider: kimi-coding
+    base_url: https://api.kimi.com/coding/
+    api_key_env: KIMI_API_KEY
+    model: kimi-k2.6
+    role: chinese_research    # 中文调研、长文档分析、内容创作
+    tokens_per_million: 0.8
+    status: deprecated
+    notes: Kimi CLI 2026-05-05 到期，Gu 暂不续费；不要作为默认 research
+
+  kimi_thinking:
+    provider: kimi-coding
+    base_url: https://api.kimi.com/coding/
+    api_key_env: KIMI_API_KEY
+    model: kimi-k2-thinking
+    role: complex_reasoning    # 复杂推理、深度思考任务
+    tokens_per_million: 0.8
+    status: deprecated
+    notes: Kimi 到期后停用
+
+  # ── Claude：coding ────────────────────────────────────────────────────────
+  claude_sonnet:
+    provider: anthropic
+    base_url: https://ai.flashapi.top   # 代理
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-sonnet-4-6
+    role: complex_coding        # 复杂 coding 兜底
+    tokens_per_million: 3.0
+    status: active
+    notes: Claude Code executor，复杂 coding 可用
+
+  claude_opus:
+    provider: anthropic
+    base_url: https://ai.flashapi.top   # 代理
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-opus-4-7
+    role: primary_claude_code
+    tokens_per_million: 15.0
+    status: active
+    notes: Claude Code 默认模型，高成本；仅 claude 主程执行官默认使用
+
+  # ── Codex CLI：OpenAI 系 coding executor ────────────────────────────────
+  codex_cli:
+    provider: openai-codex
+    base_url: ""
+    api_key_env: ""
+    model: gpt-5.5
+    role: coding_executor
+    tokens_per_million: 0.0
+    status: active
+    notes: 通过 Codex CLI / Codex OAuth 使用，作为 Claude Code 的代码执行和审查备选
+
+  # ── TARS：GPT 桌面控制 ──────────────────────────────────────────────────
+  tars_gpt54:
+    provider: custom
+    base_url: https://ai.flashapi.top/v1
+    api_key_env: DQD_FLASHAPI_API_KEY
+    api_mode: codex_responses
+    model: gpt-5.4
+    role: desktop_operator
+    tokens_per_million: 1.0
+    status: active
+    notes: TARS 默认桌面/GUI/截图验证模型；使用 dqd-flashapi，key 从环境变量读取
+
+  # ── 火山方舟：已停用 ────────────────────────────────────────────────────
+  ark_kimi_k26:
+    provider: volcano-ark
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    api_key_env: VOLCANO_ARK_API_KEY
+    model: kimi-k2.6
+    role: chinese_research      # 与 kimi_k26 相同，火山方舟备用
+    tokens_per_million: 0.6
+    status: deprecated
+    notes: Gu 不再使用火山方舟模型
+
+  ark_doubao_pro:
+    provider: volcano-ark
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    api_key_env: VOLCANO_ARK_API_KEY
+    model: doubao-seed-2.0-pro-250628
+    role: complex_coding        # 字节系 coding 模型
+    tokens_per_million: 0.5
+    status: deprecated
+    notes: Gu 不再使用火山 Doubao / Ark 模型
+
+# -----------------------------------------------------------------------------
+# 路由规则（指导性，非自动）
+# -----------------------------------------------------------------------------
+# Hermes 不自动执行这些路由，仅作为 delegate_task 时的参考。
+# 使用时在 goal 中声明角色，或通过 acp_args 传 model。
+routing_rules:
+
+  cheap_task:
+    models:
+      - deepseek_flash
+    description: 简单查询、翻译、格式化、轻量任务；MiniMax 已降级
+
+  json_repair:
+    models:
+      - deepseek_flash
+    description: JSON 修复、API 响应解析、结构化提取
+
+  chinese_research:
+    models:
+      - deepseek_flash
+    description: 中文调研、长文总结、内容创作；Kimi/Ark 不再默认使用
+
+  complex_reasoning:
+    models:
+      - deepseek_pro
+    description: 复杂推理、深度分析、多步逻辑
+
+  complex_coding:
+    models:
+      - claude_sonnet
+      - codex_cli
+    description: 复杂代码任务、Linter、Bug 定位、架构设计
+    fallback: claude_sonnet
+
+  desktop_control:
+    models:
+      - tars_gpt54
+    description: macOS 桌面控制、截图、App 操作；GLM 到期后默认使用 GPT-5.4
+
+  manual_approval:
+    models:
+      - claude_opus
+    description: Opus 高成本，仅 claude 主程执行官自动使用；其他场景需明确授权
+
+# -----------------------------------------------------------------------------
+# Delegation 默认配置
+# -----------------------------------------------------------------------------
+# delegate_task 时默认使用的模型。
+# 可在 delegate_task 调用时用 model/acp_args 参数覆盖。
+delegation_defaults:
+  # 默认 cheap/simple model，用于简单子任务
+  cheap: deepseek_flash
+
+  # 默认 coding subagent
+  coding: claude_opus
+
+  # coding executor 备选
+  coding_review: codex_cli
+
+  # 中文调研 subagent
+  research: deepseek_flash
+
+  # 复杂推理 subagent
+  reasoning: deepseek_pro
+
+  # 桌面控制
+  desktop: tars_gpt54
+
+# -----------------------------------------------------------------------------
+# 审批规则
+# -----------------------------------------------------------------------------
+# Opus 4.7 成本高，只允许 claude 主程执行官默认触发。
+# Herms 的 approvals.mode=manual 对所有 dangerous command 生效，
+# 配合 command_allowlist 禁止 Opus 自动调用。
+approval_overrides:
+  claude_opus:
+    require_manual_approval: false
+    allowed_in_delegation: true
+    allowed_agents: [claude]
+    reason: Opus 成本高昂，仅 Claude 主程执行官默认使用
+
+# -----------------------------------------------------------------------------
+# 日志记录
+# -----------------------------------------------------------------------------
+# Hermes insights 自动记录每次调用的 token 消耗和延迟。
+# 自定义字段（task_id、role、success）需要 downstream logger。
+# 当前 insights 覆盖：model、provider、tokens、latency、cost。
+logging:
+  builtin_insights: true       # 启用 insights 追踪
+  log_to_file: true
+  log_path: ~/.hermes/logs/model_calls.log
+  # 自定义日志字段需要在 custom wrapper 层实现
+  custom_fields:
+    - task_id      # 需 custom wrapper
+    - role         # 需 custom wrapper
+    - success      # 需 custom wrapper

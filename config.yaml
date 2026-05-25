@@ -1,0 +1,607 @@
+model:
+  api_key: ''
+  base_url: https://api.deepseek.com
+  default: deepseek-v4-pro
+  provider: deepseek
+providers:
+  anthropic:
+    base_url: https://ai.flashapi.top
+fallback_providers: []
+credential_pool_strategies: {}
+toolsets:
+- hermes-cli
+agent:
+  max_turns: 90
+  gateway_timeout: 900
+  restart_drain_timeout: 60
+  api_max_retries: 3
+  service_tier: ''
+  tool_use_enforcement: auto
+  gateway_timeout_warning: 180
+  clarify_timeout: 600
+  gateway_notify_interval: 120
+  gateway_auto_continue_freshness: 3600
+  image_input_mode: auto
+  disabled_toolsets: []
+terminal:
+  backend: local
+  modal_mode: auto
+  cwd: .
+  timeout: 90
+  env_passthrough:
+  - VOLCANO_ARK_API_KEY
+  - DEEPSEEK_API_KEY
+  - KIMI_API_KEY
+  - ANTHROPIC_API_KEY
+  shell_init_files: []
+  auto_source_bashrc: true
+  docker_image: nikolaik/python-nodejs:python3.11-nodejs20
+  docker_forward_env: []
+  docker_env: {}
+  singularity_image: docker://nikolaik/python-nodejs:python3.11-nodejs20
+  modal_image: nikolaik/python-nodejs:python3.11-nodejs20
+  daytona_image: nikolaik/python-nodejs:python3.11-nodejs20
+  vercel_runtime: node24
+  container_cpu: 1
+  container_memory: 5120
+  container_disk: 51200
+  container_persistent: true
+  docker_volumes: []
+  docker_mount_cwd_to_workspace: false
+  docker_extra_args: []
+  docker_run_as_host_user: false
+  persistent_shell: true
+web:
+  backend: ''
+  search_backend: ''
+  extract_backend: ''
+browser:
+  inactivity_timeout: 120
+  command_timeout: 30
+  record_sessions: false
+  allow_private_urls: false
+  engine: auto
+  auto_local_for_private_urls: true
+  cdp_url: ''
+  dialog_policy: must_respond
+  dialog_timeout_s: 300
+  camofox:
+    managed_persistence: false
+    user_id: ''
+    session_key: ''
+    adopt_existing_tab: false
+  cloud_provider: local
+checkpoints:
+  enabled: true
+  max_snapshots: 50
+  max_total_size_mb: 500
+  max_file_size_mb: 10
+  auto_prune: false
+  retention_days: 7
+  delete_orphans: true
+  min_interval_hours: 24
+file_read_max_chars: 100000
+tool_output:
+  max_bytes: 50000
+  max_lines: 2000
+  max_line_length: 2000
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: false
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+  hard_stop_after:
+    exact_failure: 5
+    same_tool_failure: 8
+    idempotent_no_progress: 5
+compression:
+  enabled: true
+  threshold: 0.5
+  target_ratio: 0.2
+  protect_last_n: 20
+  hygiene_hard_message_limit: 400
+  protect_first_n: 3
+prompt_caching:
+  cache_ttl: 5m
+openrouter:
+  response_cache: true
+  response_cache_ttl: 300
+  min_coding_score: 0.65
+bedrock:
+  region: ''
+  discovery:
+    enabled: true
+    provider_filter: []
+    refresh_interval: 3600
+  guardrail:
+    guardrail_identifier: ''
+    guardrail_version: ''
+    stream_processing_mode: async
+    trace: disabled
+auxiliary:
+  vision:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 120
+    extra_body: {}
+    download_timeout: 30
+  web_extract:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 360
+    extra_body: {}
+  compression:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 120
+    extra_body: {}
+  session_search:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+    extra_body: {}
+    max_concurrency: 3
+  skills_hub:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+    extra_body: {}
+  approval:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+    extra_body: {}
+  mcp:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+    extra_body: {}
+  title_generation:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+    extra_body: {}
+  triage_specifier:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 120
+    extra_body: {}
+  curator:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 600
+    extra_body: {}
+  flush_memories:
+    api_key: ''
+    base_url: ''
+    model: ''
+    provider: auto
+    timeout: 30
+display:
+  compact: false
+  personality: kawaii
+  resume_display: full
+  busy_input_mode: interrupt
+  tui_auto_resume_recent: false
+  bell_on_complete: false
+  show_reasoning: false
+  streaming: false
+  timestamps: false
+  final_response_markdown: strip
+  persistent_output: true
+  persistent_output_max_lines: 200
+  inline_diffs: true
+  file_mutation_verifier: true
+  show_cost: false
+  skin: default
+  language: en
+  tui_status_indicator: kaomoji
+  user_message_preview:
+    first_lines: 2
+    last_lines: 2
+  interim_assistant_messages: true
+  tool_progress_command: false
+  tool_progress_overrides: {}
+  tool_preview_length: 0
+  ephemeral_system_ttl: 0
+  platforms: {}
+  runtime_footer:
+    enabled: false
+    fields:
+    - model
+    - context_pct
+    - cwd
+  copy_shortcut: auto
+dashboard:
+  theme: default
+  show_token_analytics: false
+privacy:
+  redact_pii: false
+tts:
+  provider: edge
+  edge:
+    voice: en-US-AriaNeural
+  elevenlabs:
+    voice_id: pNInz6obpgDQGcFmaJgB
+    model_id: eleven_multilingual_v2
+  openai:
+    model: gpt-4o-mini-tts
+    voice: alloy
+  xai:
+    voice_id: eve
+    language: en
+    sample_rate: 24000
+    bit_rate: 128000
+  mistral:
+    model: voxtral-mini-tts-2603
+    voice_id: c69964a6-ab8b-4f8a-9465-ec0925096ec8
+  neutts:
+    ref_audio: ''
+    ref_text: ''
+    model: neuphonic/neutts-air-q4-gguf
+    device: cpu
+  piper:
+    voice: en_US-lessac-medium
+stt:
+  enabled: true
+  provider: local
+  local:
+    model: base
+    language: ''
+  openai:
+    model: whisper-1
+  mistral:
+    model: voxtral-mini-latest
+voice:
+  record_key: ctrl+b
+  max_recording_seconds: 120
+  auto_tts: false
+  beep_enabled: true
+  silence_threshold: 200
+  silence_duration: 3.0
+human_delay:
+  mode: 'off'
+  min_ms: 800
+  max_ms: 2500
+context:
+  engine: compressor
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  memory_char_limit: 3000
+  user_char_limit: 1375
+  provider: hindsight
+  flush_min_turns: 6
+  nudge_interval: 0
+delegation:
+  model: deepseek-v4-flash
+  provider: deepseek
+  base_url: ''
+  api_key: ''
+  api_mode: ''
+  inherit_mcp_toolsets: true
+  max_iterations: 150
+  child_timeout_seconds: 600
+  reasoning_effort: ''
+  max_concurrent_children: 3
+  max_spawn_depth: 1
+  orchestrator_enabled: false
+  subagent_auto_approve: false
+prefill_messages_file: ''
+goals:
+  max_turns: 20
+skills:
+  external_dirs: []
+  template_vars: true
+  inline_shell: false
+  inline_shell_timeout: 10
+  guard_agent_created: false
+curator:
+  enabled: true
+  interval_hours: 168
+  min_idle_hours: 2
+  stale_after_days: 30
+  archive_after_days: 90
+  backup:
+    enabled: true
+    keep: 5
+  auxiliary:
+    provider: null
+    model: null
+honcho: {}
+timezone: ''
+slack:
+  require_mention: true
+  free_response_channels: ''
+  allowed_channels: ''
+  channel_prompts: {}
+discord:
+  require_mention: true
+  free_response_channels: ''
+  allowed_channels: ''
+  auto_thread: true
+  thread_require_mention: false
+  history_backfill: true
+  history_backfill_limit: 50
+  reactions: true
+  channel_prompts: {}
+  dm_role_auth_guild: ''
+  server_actions: ''
+  allow_any_attachment: false
+  max_attachment_bytes: 33554432
+whatsapp: {}
+telegram:
+  reactions: false
+  channel_prompts: {}
+  allowed_chats: ''
+mattermost:
+  require_mention: true
+  free_response_channels: ''
+  allowed_channels: ''
+  channel_prompts: {}
+matrix:
+  require_mention: true
+  free_response_rooms: ''
+  allowed_rooms: ''
+approvals:
+  mode: manual
+  timeout: 60
+  cron_mode: deny
+  mcp_reload_confirm: true
+  destructive_slash_confirm: true
+command_allowlist:
+- shell command via -c/-lc flag
+- pipe remote content to shell
+- delete in root path
+- overwrite project env/config via redirection
+- overwrite system file via redirection
+- script execution via -e/-c flag
+- git force push (rewrites remote history)
+- stop/restart hermes gateway (kills running agents)
+- script execution via heredoc
+- recursive delete
+quick_commands: {}
+hooks: {}
+hooks_auto_accept: false
+personalities: {}
+security:
+  allow_private_urls: false
+  redact_secrets: true
+  tirith_enabled: true
+  tirith_path: tirith
+  tirith_timeout: 5
+  tirith_fail_open: false
+  website_blocklist:
+    enabled: false
+    domains: []
+    shared_files: []
+  acked_advisories: []
+  allow_lazy_installs: true
+cron:
+  wrap_response: true
+  max_parallel_jobs: null
+kanban:
+  dispatch_in_gateway: true
+  dispatch_interval_seconds: 60
+  failure_limit: 2
+code_execution:
+  mode: project
+logging:
+  level: INFO
+  max_size_mb: 5
+  backup_count: 3
+  memory_monitor:
+    enabled: true
+    interval_seconds: 300
+model_catalog:
+  enabled: true
+  url: https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
+  ttl_hours: 24
+  providers: {}
+network:
+  force_ipv4: false
+  no_proxy: open.feishu.cn,internal.apis,localhost,127.0.0.1
+sessions:
+  auto_prune: false
+  retention_days: 90
+  vacuum_after_prune: true
+  min_interval_hours: 24
+onboarding:
+  seen:
+    busy_input_prompt: true
+    openclaw_residue_cleanup: true
+updates:
+  pre_update_backup: false
+  backup_keep: 5
+lsp:
+  enabled: true
+  wait_mode: document
+  wait_timeout: 5.0
+  install_strategy: auto
+  servers: {}
+x_search:
+  model: grok-4.20-reasoning
+  timeout_seconds: 180
+  retries: 2
+_config_version: 19
+platform_toolsets:
+  cli:
+  - hermes-cli
+  - mcp-codegraph
+  feishu:
+  - hermes-cli
+  - desktop
+  - mcp-codegraph
+feishu:
+  group_policy: open
+  allow_bots: none
+  extra:
+    channel_skill_bindings:
+    - id: oc_a17156b52b4723f0293bfa659f4b5044
+      skills:
+      - staam-persona
+    channel_prompts:
+      oc_edbfff0a0b8c70963a250f5db66863f4: "\u4F60\u662F Hermes \u6280\u672F\u7FFB\
+        \u8BD1\u5B98\uFF0C\u627F\u63A5\u539F Nesta \u7684\u6280\u672F\u4E2D\u95F4\u5C42\
+        \u804C\u8D23\u3002\n\u4F60\u7684\u4EFB\u52A1\u662F\u628A Gu \u7684\u6A21\u7CCA\
+        \u6280\u672F\u9700\u6C42\u7FFB\u8BD1\u6210\u53EF\u6267\u884C\u4EFB\u52A1\u5305\
+        \uFF0C\u5B9A\u4F4D\u76F8\u5173\u4EE3\u7801\u4F4D\u7F6E\uFF0C\u7ED9\u6267\u884C\
+        \ Agent \u660E\u786E\u4FEE\u6539\u8303\u56F4\uFF0C\u5E76\u9A8C\u6536\u7ED3\
+        \u679C\u3002\n\u4F60\u53EA\u8BFB\u5206\u6790\uFF0C\u4E0D\u76F4\u63A5\u4FEE\
+        \u6539\u4EE3\u7801\u6216\u914D\u7F6E\u3002\u56DE\u590D\u98CE\u683C\uFF1A\u76F4\
+        \u63A5\u3001\u51C6\u786E\u3001\u5C11\u5E9F\u8BDD\u3002"
+      oc_a17156b52b4723f0293bfa659f4b5044: "\u4F60\u662F Hermes\uFF08\u9A6C\u8482\u5C3C\
+        \uFF09\uFF0C\u61C2\u7403\u5E1D\u591AAgent\u56E2\u961F\u7684\u603B\u63A7\u534F\
+        \u8C03\u8005\u3002\n\n\u4F60\u534F\u8C03\u7684\u4E13\u804C Agent\uFF1A\n-\
+        \ Hermes \u6280\u672F\u7FFB\u8BD1\u5B98\uFF1A\u6280\u672F\u4E2D\u95F4\u5C42\
+        \u3001\u9700\u6C42\u62C6\u89E3\u3001\u4EE3\u7801\u5B9A\u4F4D\u3001\u4EFB\u52A1\
+        \u5305\u64B0\u5199\u3001\u7ED3\u679C\u9A8C\u6536\uFF1B\u627F\u63A5\u539F nesta\
+        \ \u804C\u8D23\n- Claude \u4E3B\u7A0B\u6267\u884C\u5B98\uFF1A\u590D\u6742\u4EE3\
+        \u7801\u4FEE\u6539\u3001\u547D\u4EE4\u6267\u884C\u3001git \u64CD\u4F5C\n-\
+        \ DeepSeek \u4F4E\u6210\u672C\u5FEB\u5DE5\uFF1A\u5C0F\u6539\u3001\u5C0F\u6D4B\
+        \u8BD5\u3001\u4F4E\u98CE\u9669\u673A\u68B0\u6267\u884C\n- Pirlo \u5546\u4E1A\
+        \u7B56\u5212\u5E08\uFF1A\u5546\u4E1A\u65B9\u6848\u3001PPT \u63D0\u6848\u3001\
+        \u5356\u70B9\u63D0\u70BC\u3001\u5185\u5BB9\u7ED3\u6784\n- Intelligence \u60C5\
+        \u62A5\u7814\u7A76\u5458\uFF1A\u7F51\u9875\u641C\u7D22\u3001\u7ADE\u54C1\u8C03\
+        \u7814\u3001\u8D44\u6599\u6536\u96C6\u3001\u4FE1\u606F\u6838\u9A8C\n- Codex\
+        \ \u4EE3\u7801\u5BA1\u67E5\u5B98\uFF1A\u53EA\u8BFB\u4EE3\u7801\u5BA1\u67E5\
+        \u3001\u67B6\u6784/\u5B9E\u73B0\u65B9\u6848\u8BC4\u4F30\n- TARS \u684C\u9762\
+        \u64CD\u4F5C\u5458\uFF1AmacOS \u684C\u9762\u548C\u6D4F\u89C8\u5668 GUI \u64CD\
+        \u4F5C\u3001\u622A\u56FE\u3001\u89C6\u89C9\u9A8C\u8BC1\n- Ambrosini \u8D28\
+        \u91CF\u95E8\u536B\uFF1A\u9AD8\u98CE\u9669\u9A8C\u6536\u3001\u6700\u7EC8\u8D28\
+        \u91CF\u95E8\n\n\u8DEF\u7531\u89C4\u5219\uFF1A\n\u4EE3\u7801\u89E3\u91CA/\u6280\
+        \u672F\u8BCA\u65AD/\u9700\u6C42\u6A21\u7CCA \u2192 Hermes \u6280\u672F\u7FFB\
+        \u8BD1\u5B98\n\u5C0F\u6539/\u5C0F\u6D4B\u8BD5/\u4F4E\u98CE\u9669\u673A\u68B0\
+        \u4EFB\u52A1 \u2192 DeepSeek \u4F4E\u6210\u672C\u5FEB\u5DE5\n\u6807\u51C6\u529F\
+        \u80FD/\u4EE3\u7801\u7EF4\u62A4 \u2192 Claude \u4E3B\u7A0B\u6267\u884C\u5B98\
+        \uFF0C\u5FC5\u8981\u65F6 Codex \u5BA1\u67E5\n\u67B6\u6784\u53D8\u66F4 \u2192\
+        \ Hermes \u6280\u672F\u7FFB\u8BD1\u5B98 \u2192 Codex \u4EE3\u7801\u5BA1\u67E5\
+        \u5B98 \u2192 Claude \u4E3B\u7A0B\u6267\u884C\u5B98 \u2192 DeepSeek \u4F4E\
+        \u6210\u672C\u5FEB\u5DE5 \u2192 Codex/Ambrosini \u5BA1\u67E5\n\u65B9\u6848\
+        /\u5185\u5BB9 \u2192 Pirlo \u5546\u4E1A\u7B56\u5212\u5E08\n\u8C03\u7814/\u60C5\
+        \u62A5 \u2192 Intelligence \u60C5\u62A5\u7814\u7A76\u5458\n\u684C\u9762/\u6D4F\
+        \u89C8\u5668 GUI/\u622A\u56FE \u2192 TARS \u684C\u9762\u64CD\u4F5C\u5458\n\
+        \u9AD8\u98CE\u9669\u9A8C\u6536 \u2192 Ambrosini \u8D28\u91CF\u95E8\u536B\n\
+        \n\u4EE3\u7801\u63A2\u7D22\u4F18\u5148\u4F7F\u7528 CodeGraph\uFF1A\u5982\u679C\
+        \u9879\u76EE\u5B58\u5728 .codegraph/\uFF0C\u6280\u672F\u7FFB\u8BD1\u5B98\u3001\
+        \u4EE3\u7801\u5BA1\u67E5\u5B98\u548C\u4E3B\u7A0B\u6267\u884C\u5B98\u5E94\u4F18\
+        \u5148\u7528 codegraph_search\u3001codegraph_callers\u3001codegraph_callees\u3001\
+        codegraph_impact \u7B49\u8F7B\u91CF\u67E5\u8BE2\u5B9A\u4F4D\u4E0A\u4E0B\u6587\
+        \uFF0C\u907F\u514D\u53CD\u590D grep/read\uFF1B\u53EA\u6709\u9700\u8981\u5B8C\
+        \u6574\u6E90\u7801\u7247\u6BB5\u65F6\u624D\u4F7F\u7528 codegraph_context\u3002\
+        \n\n\u6D89\u53CA\u6587\u4EF6\u4FEE\u6539\u3001\u4EE3\u7801\u6267\u884C\u3001\
+        \u5BC6\u94A5\u3001\u5220\u9664\u3001\u90E8\u7F72\u3001\u7CFB\u7EDF\u670D\u52A1\
+        \u53D8\u66F4\uFF0C\u5FC5\u987B\u5148\u786E\u8BA4\u518D\u6267\u884C\u3002"
+FEISHU_HOME_CHANNEL: oc_a17156b52b4723f0293bfa659f4b5044
+mcp_servers:
+  codegraph:
+    command: codegraph
+    args:
+    - serve
+    - --mcp
+    timeout: 120
+    connect_timeout: 60
+    enabled: true
+  openchronicle:
+    enabled: true
+    timeout: 8
+    url: http://127.0.0.1:8742/mcp
+    connect_timeout: 3
+    initial_connect_retries: 0
+  context7:
+    enabled: true
+    command: npx
+    args:
+    - '@upstash/context7-mcp'
+  scrapling-fetch:
+    enabled: true
+    timeout: 30
+    connect_timeout: 10
+    command: uvx
+    args:
+    - scrapling-fetch-mcp
+  playwright:
+    enabled: true
+    command: npx
+    args:
+    - '@playwright/mcp'
+  github:
+    enabled: true
+    command: npx
+    args:
+    - '@modelcontextprotocol/server-github'
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
+    timeout: 120
+  minimax:
+    enabled: true
+    command: uvx
+    args:
+    - minimax-coding-plan-mcp
+    - -y
+    env:
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY}
+      MINIMAX_API_HOST: https://api.minimaxi.com
+model_aliases:
+  co:
+    base_url: https://ai.flashapi.top
+    model: claude-opus-4-7
+    provider: anthropic
+  claude_opus:
+    base_url: https://ai.flashapi.top
+    model: claude-opus-4-7
+    provider: anthropic
+  cs:
+    base_url: https://ai.flashapi.top
+    model: claude-sonnet-4-6
+    provider: anthropic
+  df:
+    base_url: https://api.deepseek.com
+    model: deepseek-v4-flash
+    provider: deepseek
+  deepseek_flash:
+    base_url: https://api.deepseek.com
+    model: deepseek-v4-flash
+    provider: deepseek
+  dp:
+    base_url: https://api.deepseek.com
+    model: deepseek-v4-pro
+    provider: deepseek
+  deepseek_pro:
+    base_url: https://api.deepseek.com
+    model: deepseek-v4-pro
+    provider: deepseek
+  codex_cli:
+    base_url: ''
+    model: gpt-5.5
+    provider: openai-codex
+  tars_gpt54:
+    base_url: https://ai.flashapi.top/v1
+    model: gpt-5.4
+    provider: custom
+reasoning: none
+fallback_model:
+  provider: openrouter
+  model: anthropic/claude-sonnet-4
