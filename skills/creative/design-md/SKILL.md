@@ -8,7 +8,7 @@ metadata:
   hermes:
     tags: [design, design-system, tokens, ui, accessibility, wcag, tailwind, dtcg, google]
     related_skills: [popular-web-designs, claude-design, excalidraw, architecture-diagram]
-agents: [pirlo, hermes-internal]
+agents: [claude]
 ---
 
 # DESIGN.md Skill

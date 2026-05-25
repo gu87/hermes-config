@@ -17,3 +17,5 @@ OpenChronicle 召回规则：需要历史细节时调用 `mcp_openchronicle_sear
 自检规则：涉及安装、部署、配置、写代码、改核心文件、删除/覆盖等有副作用操作时，先判断风险并走合适分工；不可逆或核心配置操作需用户确认。已经确认过的设计不重复争辩。
 §
 代理环境：Clash Verge 常用本地代理 `127.0.0.1:7890`；非 login shell 可能不读取 `~/.zshrc` 代理变量，必要时显式传 `--proxy` 或 env。npm registry 国内可能超时，优先考虑 npmmirror 替代下载。
+§
+自检防漂移规则：报告容量、模型、Agent、skill、toolsets 时必须读源文件并给证据；MEMORY/user-profile 用 `wc -m`；Agent 以 agents.yaml + agent-registry.json 逐项对比；模型以 config/models.yaml 为权威，config.yaml aliases 只作兼容；skill 合理性看 role + toolsets + frontmatter + 描述，宁可移除白挂 skill，不为只读/策划 Agent 加 terminal。变更后同步 runtime mirror 并跑 profile_mismatches/skill_frontmatter_errors。
