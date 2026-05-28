@@ -2,7 +2,7 @@
 name: html-anything
 description: HTML Anything — 本地 AI 驱动的 HTML 编辑器。将 Markdown/CSV/JSON/SQL 等内容通过本地 Claude Code 自动生成精美 HTML，支持 75 套模板和公众号/小红书/知乎一键发布。
 tags: [html-anything, html-editor, agent, publishing, wechat, xiaohongshu]
-agents: [claude, pirlo, hermes-internal]
+agents: [claude, designer, hermes-internal]
 ---
 
 # HTML Anything 集成
@@ -71,7 +71,7 @@ lsof -ti :14732 | xargs kill
 | `deck-product-launch` | 产品发布 Deck | 产品介绍 |
 | `data-report` | 数据报告 | 数据可视化 |
 | `dashboard` | 数据看板 | 指标展示 |
-| `dating-web` | 社交风格 | 创意页面 |
+| `deck-hermes-cyber` | Hermes 赛博主题 | 架构报告、技术文档 |
 | `blog-post` | 博客文章 | 技术/营销文章 |
 
 完整列表: `~/Projects/html-anything/src/lib/templates/skills/` (共 75 个模板)
@@ -80,7 +80,11 @@ lsof -ti :14732 | xargs kill
 
 ### 触发词
 
-当 Gu 说「输出 HTML」「生成页面」「做一张卡片」「转成网页」「用 HTML Anything」时，Coordinator 应委托 **Claude** 或 **Pirlo** 调用此服务。
+当 Gu 说「输出 HTML」「生成页面」「做一张卡片」「转成网页」「用 HTML Anything」时，Coordinator 必须优先委托 **Designer 视觉设计师** 调用此服务。**Coordinator 不得自己手写 HTML**——HTML 生成属视觉交付，走分工流程。
+
+- **架构/技术报告** → 模板 `deck-hermes-cyber`，委托 Designer
+- **方案/策划类** → Pirlo 负责内容结构，Designer 负责 HTML 视觉生成
+- **公众号长文** → 模板 `article-magazine`，委托 Designer
 
 ### Agent 调用流程
 
@@ -92,9 +96,9 @@ Claude，用 HTML-Anything 把以下内容转成 HTML：
 - 保存到: /Users/gu/Desktop/output.html
 ```
 
-**委托给 Pirlo（方案/策划类 HTML）:**
+**委托给 Designer（视觉型 HTML）:**
 ```
-Pirlo，把这个商业方案用 HTML-Anything 生成 deck-pitch 模板的 HTML，
+Designer，把这个商业方案用 HTML-Anything 生成 deck-pitch 模板的 HTML，
 保存到桌面。
 ```
 
@@ -150,3 +154,5 @@ if result["output"] == "200":
 5. **SSE 流式响应** — API 返回的是流式数据，会逐步返回生成的 HTML
 6. **端口 14732** — 非常用端口，避免被其他项目冲突
 7. **委托模式** — 涉及安装/部署/配置 HTML Anything 的任务，委托 技术翻译官 执行
+8. **大内容用文件传参** — 超过 ~2KB 的内容不要直接拼 JSON 字符串，先 `write_file` 到 `/tmp/html-anything-payload.json`，再用 `curl -d @文件路径` 传入，避免 shell 转义和 JSON 嵌套引号问题
+9. **execute_code 中 curl 的 f-string 陷阱** — 用 `execute_code` + Python f-string 构造 curl 命令时，`%{http_code}` 和 `%{time_total}` 会被 Python 当成格式化变量。必须用 `{{http_code}}` 双花括号转义，或直接用 `subprocess.run` 传列表参数

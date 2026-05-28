@@ -1,17 +1,122 @@
 {
   "schema_version": "1.0",
+  "source_of_truth": "/Users/gu/.hermes/hermes-agent/configs/managed_agents/agents.yaml",
+  "generated_from": "configs/managed_agents/agents.yaml",
   "agents": {
+    "hermes-internal": {
+      "id": "hermes-internal",
+      "type": "internal_reasoner",
+      "display_name": "Hermes 技术翻译官",
+      "soul": "你是 Hermes 技术翻译官，负责技术中间层、需求拆解、策略判断，承接原 nesta 职责。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "capabilities": [
+        "analysis",
+        "decision_making",
+        "coordination",
+        "technical_decomposition",
+        "file_reading_analysis",
+        "strategy_decision",
+        "creative_direction",
+        "codegraph_search",
+        "codegraph_context"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "subagent_profile": {
+        "model": "default",
+        "toolsets": [
+          "file",
+          "mcp-codegraph"
+        ],
+        "blocked_tools": [
+          "delegate_task",
+          "send_message",
+          "memory",
+          "write_file",
+          "patch"
+        ],
+        "permission_mode": "read_only",
+        "isolation": "readonly",
+        "allow_background": false,
+        "required_mcp_servers": [
+          "codegraph"
+        ],
+        "model_ref": "opencode_go_glm51",
+        "model_strategy": {
+          "mode": "fallback",
+          "primary": "opencode_go_glm51",
+          "chain": [
+            "opencode_go_glm51",
+            "opencode_go_deepseek_pro",
+            "opencode_go_qwen37_max",
+            "deepseek_pro"
+          ],
+          "fallback_on": [
+            "quota_exceeded",
+            "rate_limited",
+            "timeout",
+            "server_error",
+            "empty_final_content"
+          ]
+        },
+        "skills": [
+          "hermes-subagent-delegation",
+          "hermes-multi-agent-research",
+          "hermes-gateway-debug",
+          "codebase-inspection",
+          "github-repo-risk-assessment",
+          "humanizer-zh"
+        ]
+      },
+      "aliases": [
+        "Hermes 技术翻译官",
+        "技术翻译官",
+        "技术中间层",
+        "技术参谋",
+        "nesta"
+      ],
+      "role_summary": "技术中间层、需求拆解、策略判断，承接原 nesta 职责。",
+      "model_ref": "opencode_go_glm51",
+      "model_strategy": {
+        "mode": "fallback",
+        "primary": "opencode_go_glm51",
+        "chain": [
+          "opencode_go_glm51",
+          "opencode_go_deepseek_pro",
+          "opencode_go_qwen37_max",
+          "deepseek_pro"
+        ],
+        "fallback_on": [
+          "quota_exceeded",
+          "rate_limited",
+          "timeout",
+          "server_error",
+          "empty_final_content"
+        ]
+      }
+    },
     "claude": {
       "id": "claude",
-      "type": "file_executor",
+      "type": "lead_implementer",
       "display_name": "Claude 主程执行官",
-      "soul": "你是 Claude 主程执行官，负责复杂代码修改、命令执行和 git 操作。你通过外部 Claude Code CLI 执行任务，具体后端模型由用户通过 CC Switch 控制；Hermes 不在这里覆盖 base_url 或模型。",
+      "soul": "你是 Claude 主程执行官，负责外部 Claude Code CLI 执行器；后端由 CC Switch 控制。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
       "capabilities": [
+        "code_edit",
+        "test_run",
+        "refactor",
+        "git_diff",
         "file_modification",
         "script_execution",
         "git_operations",
-        "code_review",
         "codegraph_impact"
+      ],
+      "risk_allowed": [
+        "R1",
+        "R2",
+        "R3"
       ],
       "subagent_profile": {
         "model": "default",
@@ -34,7 +139,14 @@
           "codegraph"
         ],
         "model_ref": "claude_opus",
-        "runtime": "claude_code_cli",
+        "model_strategy": {
+          "mode": "external",
+          "primary": "claude_opus",
+          "chain": [
+            "claude_opus"
+          ],
+          "fallback_on": []
+        },
         "skills": [
           "github-pr-workflow",
           "github-repo-management",
@@ -48,7 +160,8 @@
           "design-md",
           "comfyui",
           "html-anything"
-        ]
+        ],
+        "runtime": "claude_code_cli"
       },
       "aliases": [
         "Claude 主程执行官",
@@ -59,171 +172,34 @@
       ],
       "role_summary": "外部 Claude Code CLI 执行器；后端由 CC Switch 控制。",
       "model_ref": "claude_opus",
+      "model_strategy": {
+        "mode": "external",
+        "primary": "claude_opus",
+        "chain": [
+          "claude_opus"
+        ],
+        "fallback_on": []
+      },
       "runtime": "claude_code_cli"
-    },
-    "codex": {
-      "id": "codex",
-      "type": "code_reviewer",
-      "display_name": "Codex 代码审查官",
-      "soul": "你是 Codex 代码审查官，通过外部 Codex CLI 做只读审查、架构评估和实现方案评估。你不直接修改代码，输出按风险和优先级排序。",
-      "capabilities": [
-        "code_review",
-        "git_operations",
-        "implementation_planning",
-        "codegraph_search",
-        "codegraph_impact"
-      ],
-      "subagent_profile": {
-        "model": "default",
-        "toolsets": [
-          "file",
-          "terminal",
-          "mcp-codegraph"
-        ],
-        "blocked_tools": [
-          "delegate_task",
-          "send_message",
-          "memory"
-        ],
-        "permission_mode": "read_only",
-        "isolation": "readonly",
-        "allow_background": false,
-        "required_mcp_servers": [
-          "codegraph"
-        ],
-        "model_ref": "codex_cli",
-        "runtime": "codex_cli",
-        "skills": [
-          "codex-superpowers",
-          "github-code-review",
-          "github-repo-risk-assessment",
-          "codebase-inspection"
-        ]
-      },
-      "aliases": [
-        "Codex 代码审查官",
-        "代码审查官",
-        "审查官",
-        "架构审查",
-        "codex"
-      ],
-      "role_summary": "外部 Codex CLI 审查器；用于只读审查、架构/实现方案评估。",
-      "model_ref": "codex_cli",
-      "runtime": "codex_cli"
-    },
-    "pirlo": {
-      "id": "pirlo",
-      "type": "content_planner",
-      "display_name": "Pirlo 商业策划师",
-      "soul": "你是 Pirlo 商业策划师，负责商业方案、PPT 提案、卖点提炼和内容结构。你不执行代码。",
-      "capabilities": [
-        "content_writing",
-        "planning",
-        "document_creation",
-        "information_organization",
-        "strategy_planning",
-        "product_planning",
-        "proposal_design"
-      ],
-      "subagent_profile": {
-        "model": "default",
-        "toolsets": [
-          "file"
-        ],
-        "blocked_tools": [
-          "delegate_task",
-          "terminal",
-          "memory"
-        ],
-        "permission_mode": "read_only",
-        "isolation": "readonly",
-        "allow_background": false,
-        "required_mcp_servers": [],
-        "model_ref": "deepseek_pro",
-        "skills": [
-          "humanizer",
-          "humanizer-zh",
-          "claude-design",
-          "sketch",
-          "baoyu-infographic",
-          "baoyu-comic",
-          "architecture-diagram",
-          "html-anything"
-        ]
-      },
-      "aliases": [
-        "Pirlo 商业策划师",
-        "商业策划师",
-        "方案策划",
-        "提案策划",
-        "pirlo"
-      ],
-      "role_summary": "商业方案、PPT 提案、内容结构。",
-      "model_ref": "deepseek_pro"
-    },
-    "agent-tars": {
-      "id": "agent-tars",
-      "type": "desktop_operator_external",
-      "display_name": "TARS 桌面操作员",
-      "soul": "你是 TARS 桌面操作员，负责桌面和浏览器 GUI 操作、截图、视觉验证。你的操作范围限制在桌面层面，不涉及代码修改。",
-      "capabilities": [
-        "desktop_control",
-        "app_operation",
-        "screenshot",
-        "macos_automation",
-        "visual_gui_automation",
-        "browser_gui_operation",
-        "browser_operation",
-        "gui_workflow"
-      ],
-      "subagent_profile": {
-        "model": "default",
-        "toolsets": [
-          "desktop",
-          "browser"
-        ],
-        "blocked_tools": [
-          "delegate_task",
-          "memory",
-          "send_message",
-          "write_file",
-          "patch"
-        ],
-        "permission_mode": "ask",
-        "isolation": "shared",
-        "allow_background": false,
-        "required_mcp_servers": [],
-        "model_ref": "tars_gpt54",
-        "skills": [
-          "browser-automation-for-blocked-sites",
-          "macos-computer-use",
-          "playwright-mcp"
-        ]
-      },
-      "aliases": [
-        "TARS 桌面操作员",
-        "桌面操作员",
-        "GUI 操作员",
-        "截图员",
-        "tars"
-      ],
-      "role_summary": "桌面、浏览器 GUI、截图、视觉验证。",
-      "model_ref": "tars_gpt54"
     },
     "deepseek-tui": {
       "id": "deepseek-tui",
-      "type": "coding_agent",
+      "type": "fast_worker",
       "display_name": "DeepSeek 低成本快工",
-      "soul": "你是 DeepSeek 低成本快工，负责小改、小测试、日志排查和低风险机械执行。不要承接复杂重构、架构变更或高风险操作。",
+      "soul": "你是 DeepSeek 低成本快工，负责小改、小测试、低风险机械执行；不负责复杂重构和高风险操作。外部搜索遵循 DeepSeek Worker Search Policy：本地优先，必要时用 anysearch-lite，已知 URL 用 scrapling-fetch。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
       "capabilities": [
-        "file_modification",
-        "script_execution",
-        "code_review",
-        "rlm_parallel_reasoning",
         "small_fix",
         "test_generation",
         "bug_reproduction",
-        "log_analysis"
+        "spike",
+        "log_analysis",
+        "external_quick_check",
+        "url_extraction"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2"
       ],
       "subagent_profile": {
         "model": "default",
@@ -241,14 +217,32 @@
         "isolation": "shared",
         "allow_background": false,
         "required_mcp_servers": [],
-        "model_ref": "deepseek_pro",
+        "model_ref": "opencode_go_deepseek_pro",
+        "model_strategy": {
+          "mode": "fallback",
+          "primary": "opencode_go_deepseek_pro",
+          "chain": [
+            "opencode_go_deepseek_pro",
+            "opencode_go_deepseek_flash",
+            "deepseek_pro",
+            "deepseek_flash"
+          ],
+          "fallback_on": [
+            "quota_exceeded",
+            "rate_limited",
+            "timeout",
+            "server_error",
+            "empty_final_content"
+          ]
+        },
         "skills": [
           "codebase-inspection",
           "spike",
           "python-debugpy",
           "node-inspect-debugger",
           "debugging-hermes-tui-commands",
-          "github-issues"
+          "github-issues",
+          "anysearch-lite"
         ]
       },
       "aliases": [
@@ -258,31 +252,56 @@
         "小改工",
         "deepseek"
       ],
-      "role_summary": "小改、小测试、低风险机械执行；不负责复杂重构和高风险操作。",
-      "model_ref": "deepseek_pro"
+      "role_summary": "小改、小测试、低风险机械执行；不负责复杂重构和高风险操作。外部搜索遵循 DeepSeek Worker Search Policy：本地优先，必要时用 anysearch-lite，已知 URL 用 scrapling-fetch。",
+      "model_ref": "opencode_go_deepseek_pro",
+      "model_strategy": {
+        "mode": "fallback",
+        "primary": "opencode_go_deepseek_pro",
+        "chain": [
+          "opencode_go_deepseek_pro",
+          "opencode_go_deepseek_flash",
+          "deepseek_pro",
+          "deepseek_flash"
+        ],
+        "fallback_on": [
+          "quota_exceeded",
+          "rate_limited",
+          "timeout",
+          "server_error",
+          "empty_final_content"
+        ]
+      }
     },
-    "ambrosini": {
-      "id": "ambrosini",
-      "type": "quality_gate",
-      "display_name": "Ambrosini 质量门卫",
-      "soul": "你是 Ambrosini 质量门卫，负责高风险验收和最终质量门。你可以只读查询 CodeGraph 验证影响面，但不能修改文件或执行命令。你的结论必须明确：通过、打回或需要人工批准。",
+    "codex": {
+      "id": "codex",
+      "type": "principal_engineer",
+      "display_name": "Codex 代码审查官",
+      "soul": "你是 Codex 代码审查官，负责外部 Codex CLI 审查器；用于只读审查、架构/实现方案评估。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
       "capabilities": [
-        "analysis",
-        "decision_making",
-        "review",
-        "verification",
+        "architecture_review",
+        "code_review",
+        "implementation_planning",
+        "technical_arbitration",
         "codegraph_search",
         "codegraph_impact"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2",
+        "R3",
+        "R4"
       ],
       "subagent_profile": {
         "model": "default",
         "toolsets": [
           "file",
+          "terminal",
           "mcp-codegraph"
         ],
         "blocked_tools": [
           "delegate_task",
-          "terminal",
+          "send_message",
           "memory",
           "write_file",
           "patch"
@@ -293,7 +312,462 @@
         "required_mcp_servers": [
           "codegraph"
         ],
-        "model_ref": "deepseek_pro",
+        "model_ref": "codex_cli",
+        "model_strategy": {
+          "mode": "external",
+          "primary": "codex_cli",
+          "chain": [
+            "codex_cli"
+          ],
+          "fallback_on": []
+        },
+        "skills": [
+          "codex-superpowers",
+          "github-code-review",
+          "github-repo-risk-assessment",
+          "codebase-inspection"
+        ],
+        "runtime": "codex_cli"
+      },
+      "aliases": [
+        "Codex 代码审查官",
+        "代码审查官",
+        "审查官",
+        "架构审查",
+        "codex"
+      ],
+      "role_summary": "外部 Codex CLI 审查器；用于只读审查、架构/实现方案评估。",
+      "model_ref": "codex_cli",
+      "model_strategy": {
+        "mode": "external",
+        "primary": "codex_cli",
+        "chain": [
+          "codex_cli"
+        ],
+        "fallback_on": []
+      },
+      "runtime": "codex_cli"
+    },
+    "intelligence": {
+      "id": "intelligence",
+      "type": "research_analyst",
+      "display_name": "Intelligence 情报研究员",
+      "soul": "你是 Intelligence 情报研究员，负责调研、竞品、资料收集、信息核验。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "capabilities": [
+        "research",
+        "information_synthesis",
+        "competitive_analysis",
+        "web_research",
+        "source_verification",
+        "market_intelligence",
+        "competitor_monitoring",
+        "news_gathering"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2"
+      ],
+      "subagent_profile": {
+        "model": "default",
+        "toolsets": [
+          "file",
+          "web"
+        ],
+        "blocked_tools": [
+          "delegate_task",
+          "send_message",
+          "memory",
+          "clarify"
+        ],
+        "permission_mode": "ask",
+        "isolation": "shared",
+        "allow_background": false,
+        "required_mcp_servers": [],
+        "model_ref": "opencode_go_qwen37_max",
+        "model_strategy": {
+          "mode": "fallback",
+          "primary": "opencode_go_qwen37_max",
+          "chain": [
+            "opencode_go_qwen37_max",
+            "opencode_go_qwen36",
+            "opencode_go_kimi26",
+            "deepseek_flash"
+          ],
+          "fallback_on": [
+            "quota_exceeded",
+            "rate_limited",
+            "timeout",
+            "server_error",
+            "empty_final_content"
+          ]
+        },
+        "skills": [
+          "competitive-intelligence"
+        ]
+      },
+      "aliases": [
+        "Intelligence 情报研究员",
+        "情报研究员",
+        "调研员",
+        "竞品研究",
+        "intelligence"
+      ],
+      "role_summary": "调研、竞品、资料收集、信息核验。",
+      "model_ref": "opencode_go_qwen37_max",
+      "model_strategy": {
+        "mode": "fallback",
+        "primary": "opencode_go_qwen37_max",
+        "chain": [
+          "opencode_go_qwen37_max",
+          "opencode_go_qwen36",
+          "opencode_go_kimi26",
+          "deepseek_flash"
+        ],
+        "fallback_on": [
+          "quota_exceeded",
+          "rate_limited",
+          "timeout",
+          "server_error",
+          "empty_final_content"
+        ]
+      }
+    },
+    "pirlo": {
+      "id": "pirlo",
+      "type": "planning_strategist",
+      "display_name": "Pirlo 商业策划师",
+      "soul": "你是 Pirlo 商业策划师，负责商业方案、PPT 提案、内容结构。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "capabilities": [
+        "strategy_planning",
+        "product_planning",
+        "proposal_design",
+        "content_writing",
+        "planning",
+        "document_creation"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2"
+      ],
+      "subagent_profile": {
+        "model": "default",
+        "toolsets": [
+          "file"
+        ],
+        "blocked_tools": [
+          "delegate_task",
+          "send_message",
+          "memory",
+          "write_file",
+          "patch"
+        ],
+        "permission_mode": "read_only",
+        "isolation": "readonly",
+        "allow_background": false,
+        "required_mcp_servers": [],
+        "model_ref": "opencode_go_kimi26",
+        "model_strategy": {
+          "mode": "fallback",
+          "primary": "opencode_go_kimi26",
+          "chain": [
+            "opencode_go_kimi26",
+            "opencode_go_kimi25",
+            "opencode_go_minimax27",
+            "deepseek_pro"
+          ],
+          "fallback_on": [
+            "quota_exceeded",
+            "rate_limited",
+            "timeout",
+            "server_error",
+            "empty_final_content"
+          ]
+        },
+        "skills": [
+          "humanizer",
+          "humanizer-zh",
+          "claude-design"
+        ]
+      },
+      "aliases": [
+        "Pirlo 商业策划师",
+        "商业策划师",
+        "方案策划",
+        "提案策划",
+        "pirlo"
+      ],
+      "role_summary": "商业方案、PPT 提案、内容结构。",
+      "model_ref": "opencode_go_kimi26",
+      "model_strategy": {
+        "mode": "fallback",
+        "primary": "opencode_go_kimi26",
+        "chain": [
+          "opencode_go_kimi26",
+          "opencode_go_kimi25",
+          "opencode_go_minimax27",
+          "deepseek_pro"
+        ],
+        "fallback_on": [
+          "quota_exceeded",
+          "rate_limited",
+          "timeout",
+          "server_error",
+          "empty_final_content"
+        ]
+      }
+    },
+    "designer": {
+      "id": "designer",
+      "type": "visual_designer",
+      "display_name": "Designer 视觉设计师",
+      "soul": "你是 Designer 视觉设计师，负责海报、视觉型 HTML、网页/UI 前端视觉、品牌视觉、图片生成方向；默认调用 html-anything、taste-skill 和 image_generate，不负责复杂工程实现。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "capabilities": [
+        "creative_direction",
+        "visual_design",
+        "poster_design",
+        "web_visual_design",
+        "ui_design",
+        "frontend_visual_design",
+        "brand_identity",
+        "image_generation_direction",
+        "html_visual_delivery"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2"
+      ],
+      "subagent_profile": {
+        "model": "default",
+        "toolsets": [
+          "file",
+          "terminal",
+          "browser",
+          "image_gen"
+        ],
+        "blocked_tools": [
+          "delegate_task",
+          "send_message",
+          "memory",
+          "clarify"
+        ],
+        "permission_mode": "ask",
+        "isolation": "shared",
+        "allow_background": false,
+        "required_mcp_servers": [],
+        "model_ref": "opencode_go_kimi26",
+        "model_strategy": {
+          "mode": "fallback",
+          "primary": "opencode_go_kimi26",
+          "chain": [
+            "opencode_go_kimi26",
+            "opencode_go_qwen37_max",
+            "opencode_go_minimax27",
+            "deepseek_pro"
+          ],
+          "fallback_on": [
+            "quota_exceeded",
+            "rate_limited",
+            "timeout",
+            "server_error",
+            "empty_final_content"
+          ]
+        },
+        "skills": [
+          "html-anything",
+          "design-taste-frontend",
+          "gpt-taste",
+          "redesign-existing-projects",
+          "high-end-visual-design",
+          "imagegen-frontend-web",
+          "imagegen-frontend-mobile",
+          "brandkit",
+          "claude-design",
+          "sketch",
+          "baoyu-infographic",
+          "baoyu-comic",
+          "architecture-diagram"
+        ]
+      },
+      "aliases": [
+        "Designer 视觉设计师",
+        "视觉设计师",
+        "设计师",
+        "UI设计师",
+        "网页设计师",
+        "海报设计师",
+        "designer"
+      ],
+      "role_summary": "海报、视觉型 HTML、网页/UI 前端视觉、品牌视觉、图片生成方向；默认调用 html-anything、taste-skill 和 image_generate，不负责复杂工程实现。",
+      "model_ref": "opencode_go_kimi26",
+      "model_strategy": {
+        "mode": "fallback",
+        "primary": "opencode_go_kimi26",
+        "chain": [
+          "opencode_go_kimi26",
+          "opencode_go_qwen37_max",
+          "opencode_go_minimax27",
+          "deepseek_pro"
+        ],
+        "fallback_on": [
+          "quota_exceeded",
+          "rate_limited",
+          "timeout",
+          "server_error",
+          "empty_final_content"
+        ]
+      }
+    },
+    "agent-tars": {
+      "id": "agent-tars",
+      "type": "desktop_operator",
+      "display_name": "TARS 桌面操作员",
+      "soul": "你是 TARS 桌面操作员，负责桌面、浏览器 GUI、截图、视觉验证。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "capabilities": [
+        "desktop_control",
+        "app_operation",
+        "screenshot",
+        "macos_automation",
+        "visual_gui_automation",
+        "browser_gui_operation",
+        "browser_operation",
+        "gui_workflow",
+        "office_document_automation"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2"
+      ],
+      "subagent_profile": {
+        "model": "default",
+        "toolsets": [
+          "desktop",
+          "browser",
+          "file",
+          "terminal"
+        ],
+        "blocked_tools": [
+          "delegate_task",
+          "send_message",
+          "memory",
+          "clarify"
+        ],
+        "permission_mode": "ask",
+        "isolation": "shared",
+        "allow_background": false,
+        "required_mcp_servers": [],
+        "model_ref": "opencode_go_mimo25_pro",
+        "model_strategy": {
+          "mode": "fallback",
+          "primary": "opencode_go_mimo25_pro",
+          "chain": [
+            "opencode_go_mimo25_pro",
+            "opencode_go_mimo2_omni",
+            "opencode_go_qwen37_max",
+            "tars_gpt54"
+          ],
+          "fallback_on": [
+            "quota_exceeded",
+            "rate_limited",
+            "timeout",
+            "server_error",
+            "empty_final_content"
+          ]
+        },
+        "skills": [
+          "browser-automation-for-blocked-sites",
+          "macos-computer-use",
+          "playwright-mcp",
+          "libreoffice-cli"
+        ]
+      },
+      "aliases": [
+        "TARS 桌面操作员",
+        "桌面操作员",
+        "GUI 操作员",
+        "截图员",
+        "tars"
+      ],
+      "role_summary": "桌面、浏览器 GUI、截图、视觉验证。",
+      "model_ref": "opencode_go_mimo25_pro",
+      "model_strategy": {
+        "mode": "fallback",
+        "primary": "opencode_go_mimo25_pro",
+        "chain": [
+          "opencode_go_mimo25_pro",
+          "opencode_go_mimo2_omni",
+          "opencode_go_qwen37_max",
+          "tars_gpt54"
+        ],
+        "fallback_on": [
+          "quota_exceeded",
+          "rate_limited",
+          "timeout",
+          "server_error",
+          "empty_final_content"
+        ]
+      }
+    },
+    "ambrosini": {
+      "id": "ambrosini",
+      "type": "quality_gate",
+      "display_name": "Ambrosini 质量门卫",
+      "soul": "你是 Ambrosini 质量门卫，负责高风险验收、最终质量门；可只读查询 CodeGraph 验证影响面。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "capabilities": [
+        "review",
+        "validation",
+        "risk_assessment",
+        "release_gate",
+        "codegraph_search",
+        "codegraph_impact"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "subagent_profile": {
+        "model": "default",
+        "toolsets": [
+          "file",
+          "mcp-codegraph"
+        ],
+        "blocked_tools": [
+          "delegate_task",
+          "send_message",
+          "memory",
+          "write_file",
+          "patch"
+        ],
+        "permission_mode": "read_only",
+        "isolation": "readonly",
+        "allow_background": false,
+        "required_mcp_servers": [
+          "codegraph"
+        ],
+        "model_ref": "opencode_go_glm51",
+        "model_strategy": {
+          "mode": "fallback",
+          "primary": "opencode_go_glm51",
+          "chain": [
+            "opencode_go_glm51",
+            "opencode_go_deepseek_pro",
+            "opencode_go_qwen37_max",
+            "deepseek_pro"
+          ],
+          "fallback_on": [
+            "quota_exceeded",
+            "rate_limited",
+            "timeout",
+            "server_error",
+            "empty_final_content"
+          ]
+        },
         "skills": [
           "codex-superpowers",
           "github-code-review"
@@ -307,108 +781,24 @@
         "ambrosini"
       ],
       "role_summary": "高风险验收、最终质量门；可只读查询 CodeGraph 验证影响面。",
-      "model_ref": "deepseek_pro"
-    },
-    "hermes-internal": {
-      "id": "hermes-internal",
-      "type": "internal_reasoner",
-      "display_name": "Hermes 技术翻译官",
-      "soul": "你是 Hermes 技术翻译官，负责把用户需求翻译成清晰技术任务，做需求拆解、策略判断和技术取舍。你承接原 nesta 的技术中间层职责，只读文件，不直接修改代码或配置。",
-      "capabilities": [
-        "analysis",
-        "decision_making",
-        "creative_planning",
-        "prioritization",
-        "strategy_decision",
-        "creative_direction",
-        "file_reading_analysis",
-        "technical_decomposition",
-        "codegraph_search",
-        "codegraph_context"
-      ],
-      "subagent_profile": {
-        "model": "default",
-        "toolsets": [
-          "file",
-          "mcp-codegraph"
+      "model_ref": "opencode_go_glm51",
+      "model_strategy": {
+        "mode": "fallback",
+        "primary": "opencode_go_glm51",
+        "chain": [
+          "opencode_go_glm51",
+          "opencode_go_deepseek_pro",
+          "opencode_go_qwen37_max",
+          "deepseek_pro"
         ],
-        "blocked_tools": [
-          "delegate_task",
-          "terminal",
-          "memory",
-          "write_file",
-          "patch"
-        ],
-        "permission_mode": "read_only",
-        "isolation": "readonly",
-        "allow_background": false,
-        "required_mcp_servers": [
-          "codegraph"
-        ],
-        "model_ref": "deepseek_pro",
-        "skills": [
-          "hermes-subagent-delegation",
-          "hermes-multi-agent-research",
-          "hermes-gateway-debug",
-          "codebase-inspection",
-          "github-repo-risk-assessment",
-          "humanizer-zh"
+        "fallback_on": [
+          "quota_exceeded",
+          "rate_limited",
+          "timeout",
+          "server_error",
+          "empty_final_content"
         ]
-      },
-      "aliases": [
-        "Hermes 技术翻译官",
-        "技术翻译官",
-        "技术中间层",
-        "技术参谋",
-        "nesta"
-      ],
-      "role_summary": "技术中间层、需求拆解、策略判断，承接原 nesta 职责。",
-      "model_ref": "deepseek_pro"
-    },
-    "intelligence": {
-      "id": "intelligence",
-      "type": "researcher",
-      "display_name": "Intelligence 情报研究员",
-      "soul": "你是 Intelligence 情报研究员，负责调研、竞品、资料收集和信息核验。你负责事实和来源，不做最终策略决策。",
-      "capabilities": [
-        "web_research",
-        "market_intelligence",
-        "competitor_monitoring",
-        "news_gathering",
-        "source_verification",
-        "information_synthesis"
-      ],
-      "subagent_profile": {
-        "model": "default",
-        "toolsets": [
-          "file",
-          "web"
-        ],
-        "blocked_tools": [
-          "delegate_task",
-          "send_message",
-          "memory",
-          "write_file",
-          "patch"
-        ],
-        "permission_mode": "ask",
-        "isolation": "shared",
-        "allow_background": false,
-        "required_mcp_servers": [],
-        "model_ref": "deepseek_flash",
-        "skills": [
-          "competitive-intelligence"
-        ]
-      },
-      "aliases": [
-        "Intelligence 情报研究员",
-        "情报研究员",
-        "调研员",
-        "竞品研究",
-        "intelligence"
-      ],
-      "role_summary": "调研、竞品、资料收集、信息核验。",
-      "model_ref": "deepseek_flash"
+      }
     }
   },
   "routing_rules": {
@@ -419,27 +809,34 @@
     "implementation_planning": "codex",
     "technical_decomposition": "hermes-internal",
     "web_research": "intelligence",
-    "file_reading_analysis": "intelligence",
+    "file_reading_analysis": "hermes-internal",
     "strategy_decision": "hermes-internal",
-    "creative_direction": "hermes-internal",
+    "creative_direction": "designer",
+    "visual_design": "designer",
+    "poster_design": "designer",
+    "web_visual_design": "designer",
+    "ui_design": "designer",
+    "frontend_visual_design": "designer",
+    "brand_identity": "designer",
+    "image_generation_direction": "designer",
+    "html_visual_delivery": "designer",
     "analysis": "hermes-internal",
     "decision_making": "hermes-internal",
-    "prioritization": "hermes-internal",
     "market_intelligence": "intelligence",
     "competitor_monitoring": "intelligence",
+    "news_gathering": "intelligence",
+    "source_verification": "intelligence",
     "desktop_control": "agent-tars",
     "app_operation": "agent-tars",
     "screenshot": "agent-tars",
     "visual_gui_automation": "agent-tars",
     "browser_gui_operation": "agent-tars",
+    "office_document_automation": "agent-tars",
     "content_writing": "pirlo",
     "planning": "pirlo",
     "document_creation": "pirlo",
     "review": "ambrosini",
-    "verification": "ambrosini",
-    "information_synthesis": "intelligence",
-    "multi_file_analysis": "intelligence",
-    "news_gathering": "intelligence",
-    "source_verification": "intelligence"
+    "validation": "ambrosini",
+    "risk_assessment": "ambrosini"
   }
 }

@@ -188,18 +188,29 @@ delegate_task(
 
 ## Pitfalls
 
-### 0. 不要自己干技术活——先派内斯塔
+### 0. 分工纪律：三类任务必须委托，不得自己干
 
-**硬性约束。** 用户已多次纠正：但凡涉及安装、配置、clone、代码修改、超 3 步的操作，必须走 内斯塔 流程。
+**硬性约束。** 用户已多次纠正。以下三类操作，Coordinator 不得自己执行：
 
-用户原话：**"这事儿你又要自己干？别忘了你的角色设定"**
+| 任务类型 | 示例 | 必须委托 | 原因 |
+|---------|------|---------|------|
+| 机械扫描 | `find`/`ls`/`du` 扫目录、文件统计 | **DeepSeek TUI** | 纯机械，不消耗主控上下文 |
+| HTML 生成 | Markdown → 样式化 HTML 页面 | **Designer + html-anything** | 视觉交付有专门 Agent，非主控手写 |
+| 视觉设计 | 海报、网页视觉、UI 前端视觉、品牌视觉、图片生成方向 | **Designer 视觉设计师** | Pirlo 负责商业内容结构，Designer 负责视觉落地 |
+| 技术操作 | 安装、配置、clone、代码修改、超 3 步 | **Hermes 技术翻译官** | 技术中间层拆解后再派 Claude Code |
+
+用户原话：
+- **"这事儿你又要自己干？别忘了你的角色设定"**（技术操作）
+- **"哦哦，我以为这种工作应该是 DeepSeek TUI 干"**（机械扫描）
+- **"这个该分工的"**（HTML 生成）
+- **"为啥不用 html-anything 做？？"**（HTML 生成）
 
 触发信号：
 - 用户说「搞/你弄/处理一下」涉及复杂操作
 - 涉及 clone、install、deploy、config 变更
 - 超过 1 步的终端命令序列
 
-正确做法：立即 `delegate_task(agent_id='nesta', goal=..., context=...)`，不要自己写命令/改文件。
+正确做法：按任务类型委托对应 Agent；技术操作用 `delegate_task(agent_id='nesta', goal=..., context=...)`，HTML/视觉交付用 `delegate_task(agent_id='designer', goal=..., context=...)`，不要自己写命令/改文件。
 
 **问题**：当接到技术任务（读代码、分析系统、做方案设计）时，你可能会自己动手 read_file / search_files / terminal，而不是先派内斯塔。
 
@@ -584,10 +595,10 @@ delegate_tool.py 中 agent_id 枚举**硬编码在两处**，必须同步更新�
 
 ```python
 # 位置 1: 第 3851 行附近 — batch task 级别的 per-task agent_id
-"enum": ["nesta", "claude", "codex", "pirlo", "intelligence", "ambrosini", "agent-tars", "deepseek-tui", "hermes-internal", "kanban"],
+"enum": ["nesta", "claude", "codex", "pirlo", "designer", "intelligence", "ambrosini", "agent-tars", "deepseek-tui", "hermes-internal", "kanban"],
 
 # 位置 2: 第 3880 行附近 — 顶层 agent_id 参数
-"enum": ["nesta", "claude", "codex", "pirlo", "intelligence", "ambrosini", "agent-tars", "deepseek-tui", "hermes-internal", "kanban"],
+"enum": ["nesta", "claude", "codex", "pirlo", "designer", "intelligence", "ambrosini", "agent-tars", "deepseek-tui", "hermes-internal", "kanban"],
 ```
 
 同时更新 `description` 字段中的 AGENTS 列表。

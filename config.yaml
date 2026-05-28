@@ -601,6 +601,13 @@ model_aliases:
     base_url: https://ai.flashapi.top/v1
     model: gpt-5.4
     provider: custom
+image_gen:
+  provider: openai
+  model: gpt-image-2-medium
+  openai:
+    model: gpt-image-2-medium
+    api_key_env: OPENAI_IMAGE_API_KEY
+    base_url: https://ai.flashapi.top/v1/images/generations
 reasoning: none
 fallback_model:
   provider: openrouter

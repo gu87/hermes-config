@@ -67,6 +67,7 @@ df -h /
 | 日志关键词 | 问题 | 严重度 | 行动 |
 |-----------|------|--------|------|
 | `AuthenticationError` / `401` / `402` | API Key 或模型路由问题 | 高 | 进入「模型配置诊断」流程 |
+| `MCP call failed: Authentication Failed: Bad credentials` | GitHub MCP token 过期 | 中 | 见 `references/github-mcp-token-diagnosis.md` → 3 步验证 |
 | `NameResolutionError` / `Failed to resolve` | 代理/DNS 波动 | 低-中 | 检查 Clash Verge 状态 |
 | `keepalive failed, triggering reconnect` | MCP 服务短暂失联 | 低 | 通常自愈，观察是否持续 |
 | `chain depth exceeded` / `BLOCKING loop` | Agent 互相 @ 触发循环 | 低 | 系统已自动阻断 |
@@ -273,7 +274,7 @@ registry = read_file('/Users/gu/.hermes/config/agent-registry.json')
 agents_yaml = read_file('/Users/gu/.hermes/hermes-agent/configs/managed_agents/agents.yaml')
 
 # 2. 逐 Agent 对比
-for agent_id in ['claude', 'codex', 'pirlo', 'agent-tars', 'deepseek-tui', 'ambrosini', 'hermes-internal', 'intelligence']:
+for agent_id in ['claude', 'codex', 'pirlo', 'designer', 'agent-tars', 'deepseek-tui', 'ambrosini', 'hermes-internal', 'intelligence']:
     compare(registry[agent_id].subagent_profile.toolsets, agents_yaml[agent_id].tools)
     compare(registry[agent_id].subagent_profile.skills, agents_yaml[agent_id].skills)
     compare(registry[agent_id].subagent_profile.model_ref, agents_yaml[agent_id].model_ref)
@@ -411,7 +412,10 @@ hermes gateway start
 - **内存评估**：注册前检查空载 RSS，MacBook Air M1 8GB 环境需谨慎
 - **不与 Open Design 端口冲突**：OD 用 7456+3000，HTML-Anything 用 14732
 - **只给有 terminal 的 Agent**：只读 Agent 加 terminal 会破坏角色边界，宁可少分配
+- **生产模式优化**：dev 模式进程多、内存高，静态构建 + python http.server 可节省 74% 内存。详见 `references/service-production-mode-optimization.md`
 - `references/model-config-field-map.md` — Gu 的机器实际三层配置映射表，含已验证别名和诊断命令
 - `references/token-efficiency-audit-2026-05-25.md` — 2026-05-25 架构自检实录：配置项发现、浪费模式、修复建议
 - `references/system-audit-2026-05-25.md` — 2026-05-25 全量系统自检实录：5 个关键发现、修复方法、最终状态快照
 - `references/deployment-verification-2026-05-25.md` — 2026-05-25 部署就绪性审计实录：仓库结构、.gitignore 缺口、launchd plist 清单
+- `references/github-mcp-token-diagnosis.md` — GitHub MCP 认证失败 3 步诊断：config.yaml 配置确认 → 环境变量检查 → token curl 验证
+- `references/mcp-token-health-check.md` — 全量 MCP/API token 健康检查一键脚本：GitHub、DeepSeek、FlashAPI、Volcano、KIMI
