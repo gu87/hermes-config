@@ -1,0 +1,67 @@
+providers:
+  opencode-go:
+    provider: opencode-go
+    plan: OpenCode Go
+    source: manual
+    auto_fetch: true
+    five_hour_limit_usd: 12
+    weekly_limit_usd: 30
+    monthly_limit_usd: 60
+    notes: "Official docs describe shared spend windows: $12 per 5 hours, $30 per week, $60 per month. Request counts are estimates and vary with prompt/output size."
+    model_limits:
+      glm-5.1:
+        requests_per_5h: 880
+        requests_per_week: 2150
+        requests_per_month: 4300
+      glm-5:
+        requests_per_5h: 1150
+        requests_per_week: 2880
+        requests_per_month: 5750
+      kimi-k2.6:
+        requests_per_5h: 1150
+        requests_per_week: 2880
+        requests_per_month: 5750
+      kimi-k2.5:
+        requests_per_5h: 1850
+        requests_per_week: 4630
+        requests_per_month: 9250
+      mimo-v2.5:
+        requests_per_5h: 2150
+        requests_per_week: 5450
+        requests_per_month: 10900
+      mimo-v2.5-pro:
+        requests_per_5h: 1290
+        requests_per_week: 3225
+        requests_per_month: 6450
+      qwen3.6-plus:
+        requests_per_5h: 3300
+        requests_per_week: 8200
+        requests_per_month: 16300
+      minimax-m2.7:
+        requests_per_5h: 3400
+        requests_per_week: 8500
+        requests_per_month: 17000
+      minimax-m2.5:
+        requests_per_5h: 6300
+        requests_per_week: 15900
+        requests_per_month: 31800
+      qwen3.5-plus:
+        requests_per_5h: 10200
+        requests_per_week: 25200
+        requests_per_month: 50500
+      deepseek-v4-pro:
+        requests_per_5h: 3450
+        requests_per_week: 8550
+        requests_per_month: 17150
+      deepseek-v4-flash:
+        requests_per_5h: 31650
+        requests_per_week: 79050
+        requests_per_month: 158150
+      qwen3.7-max:
+        notes: Present in the live model list; official request estimate was not listed in the cached usage-limit table.
+      mimo-v2-pro:
+        notes: Present in the live model list; official request estimate was not listed in the cached usage-limit table.
+      mimo-v2-omni:
+        notes: Present in the live model list; official request estimate was not listed in the cached usage-limit table.
+      hy3-preview:
+        notes: Preview model present in the live model list; official request estimate was not listed in the cached usage-limit table.

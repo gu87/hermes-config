@@ -117,6 +117,18 @@ Step 2: [做什么]
 - [ ] 条件 4
 ```
 
+### 证据要求
+
+执行 Agent 必须在 outbox 或执行结论中提供以下证据；缺失任一项时，质量门默认进入 `NEEDS HUMAN REVIEW`：
+
+```yaml
+evidence_required:
+  - changed_files
+  - verification_commands
+  - verification_output_summary
+  - known_risks
+```
+
 ---
 
 ## 8. 执行顺序建议
@@ -208,6 +220,16 @@ Step 3: 更新测试用例
 
 ### 兼容性验收
 - [ ] 与现有调用方代码兼容（API 签名不变）
+```
+
+### 证据要求
+
+```yaml
+evidence_required:
+  - changed_files
+  - verification_commands
+  - verification_output_summary
+  - known_risks
 ```
 
 ### 8. 执行顺序建议

@@ -40,15 +40,41 @@ For shorter windows, use `tbs=qdr:d` (past 24h) or `tbs=qdr:w` (past week) on th
 https://www.google.com/search?q=<query>&tbm=nws&tbs=qdr:d&hl=en-US
 ```
 
-### Chinese-Language Research — Google News as Primary Entry Point
+### Chinese-Language Research — Baidu News as Primary Entry Point (Recommended)
 
-For Chinese marketing intelligence (懂球帝 / sports marketing context), bypass standard Google Search and go directly to Google News:
+**Preferred first stop for Chinese marketing intelligence.** Baidu News via Playwright browser is faster and more reliable than Google News for Chinese-language queries. It consistently returns recent content (within 24-48h) with readable summaries in the snapshot YAML — no CAPTCHA, no redirect failures, no `google.com/sorry/`.
+
+**24-hour filtered Baidu News URL pattern:**
+
+```
+https://www.baidu.com/s?wd=<url-encoded-query>&tn=news&rtt=4
+```
+
+Where `rtt=4` is the 24-hour time filter. Without `rtt`, results span weeks/months.
+
+**Snapshot format:** Baidu News returns a YAML snapshot with each article as a `generic` block containing:
+- `heading` with title text + link URL
+- `generic` block with relative timestamp (e.g. "昨天17:41", "5天前") + summary snippet
+- Source link (e.g. "同花顺财经", "新浪财经", "钛媒体APP")
+
+**Extraction strategy:**
+1. Navigate to Baidu News with `rtt=4`
+2. `browser_snapshot()` — headlines and summaries are fully extractable from the YAML
+3. For deep dives: use Scrapling `s_fetch_page` basic mode on article URLs from known-reliable sources (thepaper.cn, huxiu.com, baijiahao.baidu.com with正规媒体 publisher). For untrusted自媒体 on baijiahao or fragile sources (新浪财经/163), use snippet data — don't navigate.
+4. Run multiple angle queries (see Query Strategy table below)
+5. **Baidu News snapshot is self-sufficient for ~80% of briefing content** — only deep-read the 2-3 most critical articles (verified 2026-05-27 evening session)
+
+**Why Baidu over Google for Chinese:** Google News' Chinese index (`hl=zh-CN&gl=CN`) is thin and inconsistent — especially for niche topics like sports sponsorship. Baidu News has deeper Chinese coverage and no CAPTCHA risk.
+
+### Google News — Secondary for Cross-Validation
+
+For English-language queries or cross-validating Chinese findings against an international source:
 
 ```
 https://news.google.com/search?q=<encoded-Chinese-query>&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
 ```
 
-**Why:** Google News consistently returns Chinese-language results with readable snippet summaries even when the actual article pages are inaccessible (常见 404/付费墙/页面不存在). The snippet text alone often contains enough info for a daily briefing.
+**Why:** Google News returns Chinese-language results with readable snippet summaries even when the actual article pages are inaccessible (常见 404/付费墙/页面不存在).
 
 **When direct URL navigation fails (common pattern):**
 - `sina.com.cn` links return "页面没有找到" (page not found). Google search result URLs are frequently truncated or use redirect wrappers that break.
@@ -107,18 +133,43 @@ For each promising article found:
 2. **Check what the most recent session already found** — the morning session records contain search logs, key findings, and tool usage notes. These are usually sufficient for a 晚报 update because:
    - The 晚报 window (6h from morning run) rarely produces major breaking news
    - Cross-verification and deeper analysis add more value than fresh search
-3. **Cross-verify with local project files** — search the user's Desktop/ project directories and Obsidian vault for brand-related files:
+3. **Harvest OpenChronicle event logs for real-time internal intelligence** — When OpenChronicle is running (screen-capture plugin), the daily event log (`event-YYYY-MM-DD.md`) under `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/个人知识库/3-知识/wiki/OpenChronicle记忆/` contains raw Feishu chat captures, MCN platform activity, and internal brand discussions. This is a **primary offline intelligence source** that web search cannot match:
+
+   a. **Read today's event log first** — use `read_file` to scan for brand keywords in recorded Feishu messages (耐克、蒙牛、伊利、安慕希、百威、小米、比亚迪、剑南春、世界杯、赞助). The event log captures visible_text from Feishu group chats even when you lack web/browser tools.
+
+   b. **Search across event logs using OpenChronicle MCP tools** (when available via `mcp_openchronicle_search_captures`) — query past 24h for brand keywords to find execution-level intel that web search can't reach.
+
+   c. **Extract execution-level intel from Feishu captures** — typically contains:
+      - Brand partnership group chats (e.g. 耐克合作, 营销中心沟通群) — real-time discussions on resource placement, image specs, launch timelines
+      - MCN platform captures (e.g. mcn.mgcc.com.cn orders) — KOL campaign orders with brand names, budgets, delivery dates
+      - Note source reliability: internal captures are HIGH for execution intel but may not be public yet — tag as "飞书内部群聊捕获" in the source table
+
+   d. **飞书审批中心 (Feishu Approval Center) — HIGH-value intelligence source** (verified 2026-05-27): The Approval Center (`飞书审批`) captures deal-level information before it becomes public:
+      - Payment approvals show confirmed amounts and client names (e.g., "网易实况足球世界杯合作-80万", "付款审批-百威10.6万")
+      - Qualification requests (资质申请) reveal which clients are executing orders and need stamped documentation
+      - Travel/expense approvals hint at field activity (e.g., World Cup on-site teams)
+      - Scan for keywords: "审批", "付款", "资质", "回款主体", "世界杯" in approval titles
+
+   e. **微信文件预览 (WeChat File Preview) — pre-public partnership docs** (verified 2026-05-27): Strategic cooperation documents opened in WeChat (e.g., "比亚迪X懂球帝美加墨世界杯战略合作权益说明.xlsx") reveal partnership terms, payment schedules, and activation timelines before any public announcement. When OpenChronicle captures a WeChat file preview with a brand+世界杯 filename, treat it as HIGH-confidence execution intel.
+
+4. **Cross-verify with local project files** — search the user's Desktop/ project directories and Obsidian vault for brand-related files:
    ```python
    # Look for brand project files that may contain execution-level intel
    search_files(pattern='*百威*', path='/Users/gu/Desktop', target='files')
    search_files(pattern='*世界杯*', path='/Users/gu/Library/Mobile Documents/iCloud~md~obsidian', target='files')
    ```
    Local project files may reveal ad orders, content calendars, or partnership docs not yet announced publicly — offering execution-level intel that web search can't capture.
-4. **Analyze gaps** — what does the morning session NOT have that the user would expect?
+
+5. **Analyze gaps** — what does the morning session NOT have that the user would expect?
    - P0 brands that weren't covered: search their directory for files
    - Time-sensitive events (cron jobs, sales, deadlines): check `~/.hermes/cron/jobs.json`
-5. **Compile with explicit freshness labeling** — tag each finding with when it was first discovered, not when it's being reported. This prevents stale data looking fresh.
-6. **Output [SILENT]** only if all recent session records are empty AND local file search found nothing — otherwise produce the briefing with clear source-footnotes.
+
+6. **Compile with explicit freshness labeling** — tag each finding with when it was first discovered (not when it's being reported). Distinguish three data tiers:
+   - **Fresh (today's capture)**: extracted from today's event log or live Feishu activity — highest value
+   - **Session-confirmed**: carried forward from this morning's session record, no new signals
+   - **Archived intel**: from earlier days' session records — label clearly with original discovery date
+
+7. **Output [SILENT]** only if ALL sources return nothing: recent session records are empty AND local file search found nothing AND OpenChronicle event log has no brand mentions. Otherwise produce the briefing with clear source-footnotes and freshness tags.
 
 **Rationale:** The competitive-intelligence `references/` directory IS the durable record of past research sessions. A 晚报 cron job running in tool-restricted mode should treat these records as a "research cache" rather than failing silently. The user gets value from the 晚报 even without live search — the 晚报's job is consolidation and cross-verification, not original discovery.
 
@@ -157,8 +208,9 @@ These sources consistently return readable article content via `browser_navigate
 | 央视广告频道 | `1118.cctv.com/...` | High | CCTV advertising/marketing channel; publishes World Cup media plans, sponsor event coverage (总台总经理室). Critical source for sponsor intelligence: content matrix, program sponsorship inventory, 300+ attendee lists |
 | 虎嗅 (Huxiu.com) | `huxiu.com/article/...` | High | 商业/科技深度分析。微信公众号「深响」等作者常驻。全文可通过 Scrapling `s_fetch_page` 完整读取（已验证 2026-05-25），无付费墙拦截。适合做趋势分析和行业评论内容 |
 | 网易公众号转载 (163.com/dy) | `163.com/dy/article/...` | Medium | 微信公众号文章在网易的转载镜像。可通过 Google 搜索结果 snippet 获取摘要，全文抓取偶尔成功 |
+| 百度百家号 (baijiahao.baidu.com) | `baijiahao.baidu.com/s?id=...` | Medium-High | 百度内容平台，大量正规媒体（红星新闻、北青网、封面新闻等）在此发布。**可通过 Scrapling `s_fetch_page` basic mode 直接全文抓取**（已验证 2026-05-27：咪咕官宣文章 2161 字符 100% 检索）。注意：百家号上既有正规媒体也有自媒体——检查发布者身份判断可靠性，正规媒体标记为 High，自媒体/企业号标记为 Medium |
 
-**Sources that remain snippet-only** (as already documented): sina.com.cn, 163.com, campaignasia.com, adage.com, yicaiglobal.com, designrush.com — do not attempt deep-dive.
+**Sources that remain snippet-only** (as already documented): sina.com.cn, 163.com (主站), campaignasia.com, adage.com, yicaiglobal.com, designrush.com — do not attempt deep-dive.
 
 ### Reliable English Sources (Deep-Dive Ready)
 
@@ -173,6 +225,7 @@ These English-language sources consistently return readable article content. Add
 | Bloomberg | `bloomberg.com/...` | High | Paywall on most articles; use snippet for deep content |
 | Australian FinTech | `australianfintech.com.au/...` | Medium | Finance/marketing trade publication. Full article text readable via Scrapling `s_fetch_page`. Verified 2026-05-25 with Visa World Cup campaign article. |
 | Campaign Asia | `campaignasia.com/article/...` | Medium | Marketing trade (Haymarket). Full article readable via Scrapling `s_fetch_page` with markdown format. May truncate long articles (>8000 chars). Verified 2026-05-25 with Verizon/TikTok/Home Depot World Cup article. |
+| SportsPro | `sportspro.com/news/...` | High | Sports business trade publication. Full article accessible via Scrapling `s_fetch_page` basic mode (no JS required for article text). May truncate >10K chars — use `start_index` to fetch remainder. Listing pages (`/sponsorship-marketing/`) are also readable. Hot-linked related posts in article body surface additional stories. Verified 2026-05-27 with FIFA Fan ID article (26 May) and FIFA-CCTV deal article (18 May). |
 
 **SB Nation verification note (2026-05-25):** Article loaded fully via Google News redirect without paywall, CAPTCHA, or 404. Navigation path: Google News search → `browser_navigate(google_news_read_url)` → auto-redirect to `cominghomenewcastle.sbnation.com` → full article readable.
 
@@ -225,6 +278,7 @@ Label unavailable sources in the source table (e.g., "X/Twitter: unavailable wit
 - 「三信号」固定3条，是全文核心。读者只看这3条就能掌握大局
 - 「品牌动态」每条必须包含「为什么重要」和「对我们意味着」
 - 「启示与行动」每条必须可操作。❌ 「值得关注」「建议跟踪」 ✅ 「百威双星模式可推给蒙牛，周二前出一版概念」
+- **当有内部情报时**（飞书群聊/审批/MCN/微信文件），在「启示与行动」之前加一节「📊 飞书内部执行情报」表格，汇总所有内部捕获的执行级信息（品牌、金额、时间节点、来源群/审批号、捕获时间）。这是offline fallback模式下最有价值的差异化内容。
 - 无新信息时输出 `[SILENT]`
 
 ### Format B: One-Shot Research Briefing (用于按需深度调研)
@@ -280,12 +334,13 @@ Label unavailable sources in the source table (e.g., "X/Twitter: unavailable wit
 **关键设计原则：**
 - **早报做原创新闻发现** — 所有 web search、browser 抓取、原文深读都放在早报
 - **晚报做交叉验证 + 深度分析** — 利用早报 session records + 本地项目文件。晚报可以不跑任何 web search 而产出有价值的 briefing
+- **⚠️ 工具可用时晚报也可做原创发现** (2026-05-27 验证)：当 Playwright Browser 在晚报 session 可用时，Baidu News rtt=4 + Scrapling 深读可产出不亚于早报的原创内容。早/晚报的角色由工具集决定，不由时间决定——判断依据是 session 中实际可用的工具，不是报次标签。
 - 两个 cron job 使用相同的 prompt 模板（仅 `{早报/晚报}` 标记不同），时间窗口均为过去12小时
 
 ## Common Pitfalls
 
 - **早报/晚报 toolset asymmetry**: The 早报 cron job (08:30) typically has full web/browser toolset. The 晚报 cron job (18:00) may run with restricted tools (file-only) due to subagent configuration. **Plan for this**: put original discovery in 早报, make 晚报 a cross-verification + deeper analysis run that works offline using session reference files and local project directories.
-- scrapling_fetch does NOT work for news gathering — consistently times out on Google (curl error 28), then marks the MCP server as "unreachable" after 3 consecutive failures, blocking further use for the entire session. Always use Playwright browser MCP from the start. After the first timeout, switch immediately — do not retry.
+- scrapling_fetch basic mode: Historically unreliable for news gathering (times out on Google, marks server as "unreachable"). HOWEVER (verified 2026-05-27): basic mode WORKS on WordPress-based trade publications that don't require JS for content delivery — specifically SportsPro (sportspro.com). Use this as a direct-article retrieval tool, NOT as a search engine. Navigate to known article URLs directly; do NOT use scrapling with search engines (Bing/Google/Yahoo — all either return garbage results or time out). Stealth mode requires Playwright and will likely fail with a "Playwright not installed" error — fall back to basic mode or skip.
 - Google News snapshots are text-only — images and video embeds cannot be extracted from snapshots
 - Timestamps are relative — "3 days ago" means relative to crawl time, not absolute. Multiple relative timestamps in one report may confuse if cross-referenced later
 - Chinese language searches from China IP may have lower recall — Google News' Chinese index is thinner; supplement with English queries
@@ -296,8 +351,13 @@ Label unavailable sources in the source table (e.g., "X/Twitter: unavailable wit
 - Chinese news site URL fragility: sina.com.cn, 163.com URLs from Google search results frequently return "页面没有找到" or redirect to homepage. Prefer thepaper.cn articles which are reliably readable. For paywalled sources (campaignasia.com, yicaiglobal.com, adage.com), the Google News snippet may be your best data source.
 - Google News "展开" button is fragile: Clicking the expand button on a Google News article card may fail with Playwright (both ref= and text= selectors). Do not fight it — instead, use browser_navigate with the full Google News read URL (https://news.google.com/read/... from the link's href). This auto-redirects to the actual article page for many sources. If the redirect works, you get full article text. If it fails (404/paywall), fall back to snippet data.
 - Google News when=1d filter is directional, not strict: Google News' time filter is approximate — especially for Chinese-language queries, it frequently returns results from 4 to 21+ days ago. Do not dismiss older articles that appear within this filter; they are often the best available intelligence for a narrow window. Supplement Chinese queries with English searches (which have stricter time filtering) to find truly recent items.
+- **Bing search via scrapling basic mode returns garbage for non-English queries** (verified 2026-05-27): Chinese queries on Bing via scrapling `s_fetch_page` consistently return irrelevant results (e.g., "泡泡糖" for 世界杯 queries, hotel listings for sponsor searches). The search snippets appear garbled — Bing's Chinese-language search index appears to break when scraped. English queries also get degraded (e.g., "World" queries return Microsoft Word dictionary entries). DO NOT use Bing search via scrapling. If Playwright browser is available, use Bing via Playwright as documented above.
 - same_tool_failure_warning (3+ consecutive failures of the same tool) is a signal to change approach immediately, not retry.
+- **MiniMax auth failure is distinct from rate limit** (verified 2026-05-27): `login fail: Please carry the API secret key in the 'Authorization' field` means the API key is not being sent — this is a different error from `2056-usage limit exceeded`. If you see this error on every call, do not retry MiniMax at all — switch immediately to the multi-channel fallback chain.
+- **Playwright "Target closed" error**: When browser_navigate returns `Target page, context or browser has been closed`, the Playwright browser instance is not running. This requires external intervention (restarting the MCP server or launching a new browser instance) — you cannot fix this from within the agent. Fall back to scrapling basic mode for known-reliable direct article URLs (e.g., SportsPro).
 - **Local project files as supplementary source**: The user's Desktop/ project directories and Obsidian vault often contain brand activity intel not yet public — ad orders, content calendars, partnership docs. Search these when web results are thin. Use `search_files(pattern='*百威*', path='/Users/gu/Desktop', target='files')` or similar. Cross-reference file timestamps to determine freshness. This is particularly valuable for the 晚报 run when web tools may be unavailable.
+- **飞书审批中心 + 微信文件预览 = 最高价值离线情报** (verified 2026-05-27/28): When web tools are unavailable, the OpenChronicle event log's Feishu Approval Center captures and WeChat file previews are the SINGLE most valuable offline data source — they reveal deal amounts, payment status, and partnership terms BEFORE any public announcement. Scan event logs for "审批", "付款", "资质", "回款主体" keywords and WeChat file previews with brand+世界杯 filenames. This was confirmed across two consecutive sessions (May 27 evening and May 28 morning).
+- **飞书内部执行情报表格** (new Format A section, verified 2026-05-28): When the briefing contains internal intel (Feishu chats, approvals, MCN, WeChat files), add a "📊 飞书内部执行情报" table between "行业趋势" and "启示与行动". Format: `| # | 情报 | 来源 | 时间 |` — this gives readers a quick-reference view of execution-level signals that web search cannot provide.
 
 ## Related Skills
 
@@ -307,9 +367,15 @@ Label unavailable sources in the source table (e.g., "X/Twitter: unavailable wit
 ## Reference Files
 
 - `references/world-cup-daily-briefing-cron-template.md` — 懂球帝世界杯营销日报 cron prompt 模板（三层结构 + P0/P1/P2 + 早/晚报拆分）
-- `references/world-cup-2026-05-25-session.md` — 2026-05-25早报session记录：搜索查询、关键发现、FIFA赞助商层级体系知识库、工具使用经验
+- `references/world-cup-2026-05-27-session.md` — 2026-05-27早报session记录：工具严重受限环境下的回退策略
+- `references/world-cup-2026-05-27-evening-session.md` — 2026-05-27晚报session记录：Baidu News→Scrapling高效管道验证、baijiahao新源确认、晚报工具全时的原创发现能力
+- `references/world-cup-2026-05-26-evening-session.md` — 2026-05-26晚报session记录
+- `references/world-cup-2026-05-26-session.md` — 2026-05-26早报：Baidu News主入口验证、关键发现（华帝/剧星传媒/伊利蒙牛/长安汽车）、工具使用经验
+- `references/world-cup-2026-05-25-session.md` — 2026-05-25早报：搜索查询、关键发现、FIFA赞助商层级体系知识库、工具使用经验
 - `references/world-cup-2026-05-25-evening-session.md` — 2026-05-25晚报session记录（离线回退模式）：工具受限时的备选工作流、本地文件交叉验证经验
 - `references/world-cup-2026-05-25-evening-v2-session.md` — 2026-05-25晚报v2 session记录（多通道并行回退模式）：web_search限流后的三通道并行策略（Intelligence + Playwright + Scrapling）、虎嗅/Australian FinTech 新源验证
 - `references/world-cup-2026-05-23-session.md` — 2026-05-23 session记录
 - `references/world-cup-2026-05-16-session.md` — 2026-05-16 session记录
 - `references/world-cup-2026-05-14-session.md` — 2026-05-14 session记录
+- `references/offline-intelligence-sources.md` — 离线情报源完整目录：飞书审批中心、微信文件预览、MCN平台、销售群聊的捕获模式与提取技巧
+- `references/world-cup-2026-05-28-session.md` — 2026-05-28早报session记录：纯离线模式验证（零web工具产出13条情报）、飞书审批中心/微信文件新源确认、offline-intelligence-sources参考文件创建

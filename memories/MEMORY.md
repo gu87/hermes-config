@@ -16,6 +16,21 @@ OpenChronicle 召回规则：需要历史细节时调用 `mcp_openchronicle_sear
 §
 自检规则：涉及安装、部署、配置、写代码、改核心文件、删除/覆盖等有副作用操作时，先判断风险并走合适分工；不可逆或核心配置操作需用户确认。已经确认过的设计不重复争辩。
 §
+§
 代理环境：Clash Verge 常用本地代理 `127.0.0.1:7890`；非 login shell 可能不读取 `~/.zshrc` 代理变量，必要时显式传 `--proxy` 或 env。npm registry 国内可能超时，优先考虑 npmmirror 替代下载。
 §
+GitHub MCP 认证修复：`gh auth status` + `gh auth token` → 写 `.env` GITHUB_TOKEN。gh 用 keychain/OAuth，比手动 GitHub token 更不容易过期。优先走 gh，备选才手动开 settings/tokens。
+§
+KIMI_API_KEY 已全量移除（`.env` + `config.yaml` env_passthrough）。models.yaml 中 kimi 模型 registrations 已标记 deprecated。
+§
+Claude agent 委托路径：走 FlashAPI 代理（`ANTHROPIC_API_KEY`），与用户本地 Claude Code Pro（OAuth）独立。agent 401 不等于 Claude Code 坏了。
+§
 自检防漂移规则：报告容量、模型、Agent、skill、toolsets 时必须读源文件并给证据；MEMORY/user-profile 用 `wc -m`；Agent 以 agents.yaml + agent-registry.json 逐项对比；模型以 config/models.yaml 为权威，config.yaml aliases 只作兼容；skill 合理性看 role + toolsets + frontmatter + 描述，宁可移除白挂 skill，不为只读/策划 Agent 加 terminal。变更后同步 runtime mirror 并跑 profile_mismatches/skill_frontmatter_errors。
+§
+任务-工具匹配规则：收到内容转换类任务时，必须先检查可用 skills 列表中的精准匹配项。具体映射：
+- Markdown/内容 → 样式化 HTML：用 html-anything API（端口14732，curl POST），不准手写 HTML
+- 其他内容转换同理：优先找已部署的专用工具，不自己从零写
+
+这条规则的核心是：当系统里已有专门解决这个问题的工具/skill 时，不准跳过它直接动手。先加载 skill，再执行。
+§
+LibreOffice CLI automation 已部署：harness 路径 `/Users/gu/Desktop/AI AGENT/CLI-Anything-main/CLI-Anything-main/libreoffice/agent-harness/`（editable pip install），通过 `python3.11 -m cli_anything.libreoffice` 调用。支持 Writer/Calc/Impress 文档生成 + ODF/PDF/DOCX/XLSX/PPTX 导出。归 TARS 桌面自动化域。详见 skill `libreoffice-cli`。

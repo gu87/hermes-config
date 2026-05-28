@@ -358,7 +358,12 @@ vim ~/.hermes/.env
 hermes gateway start
 ```
 
-### 5. GitHub Push Protection — 推送前检查敏感信息
+### 5. Claude agent 401 ≠ Claude Code Pro 挂了
+
+**❌ 错误**: delegate_task(agent_id='claude') 报 401 → 推断用户 Claude Code 不可用
+**✅ 正确**: Claude agent 委托走 FlashAPI 代理（`ANTHROPIC_API_KEY`），和用户本地 Claude Code Pro（OAuth/keychain 认证）是两套独立认证。Claude Code 正常但 agent 委托 401 是常见状态——只需修 FlashAPI key。
+
+**横向规律**: 任何 `runtime: claude_code_cli` 的 managed agent 都走 FlashAPI 代理，不经过用户本地 Claude Code 的 OAuth session。诊断时先区分「直接 Claude Code CLI」vs「Hermes 委托 Claude agent」。
 
 **症状**: `git push` 被 GitHub 拒绝，报 `GH013: Repository rule violations — Push cannot contain secrets`，指明 commit 中某文件某行包含 token。
 

@@ -71,6 +71,187 @@ models:
     status: deprecated
     notes: Kimi 到期后停用
 
+  # ── OpenCode Go：包月模型池试验，不进主链路 ─────────────────────────────
+  # API 模式按官方兼容类型登记：
+  #   chat_completions: GLM / Kimi / DeepSeek / MiMo
+  #   anthropic_messages: MiniMax / Qwen
+  # 所有 OpenCode Go 模型默认 experimental，只用于后台手动切换或 A/B。
+  opencode_go_minimax27:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: anthropic_messages
+    model: minimax-m2.7
+    role: experimental_content_agent
+    tokens_per_million: 0.2
+    status: experimental
+    notes: OpenCode Go Anthropic-compatible；内容生成/方案草稿 A/B，先手动测试稳定性和额度消耗
+
+  opencode_go_minimax25:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: minimax-m2.5
+    role: experimental_cheap_content
+    tokens_per_million: 0.15
+    status: experimental
+    notes: OpenCode Go Anthropic-compatible；低成本内容/格式化备选，先手动测试
+
+  opencode_go_kimi26:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: kimi-k2.6
+    role: experimental_chinese_research
+    tokens_per_million: 0.2
+    status: experimental
+    notes: 2026-05-27 定向复测可用；第一轮失败是极短 max_tokens 下 final content 为空，正常调用需给足输出预算
+
+  opencode_go_kimi25:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: kimi-k2.5
+    role: experimental_chinese_research
+    tokens_per_million: 0.18
+    status: experimental
+    notes: OpenCode Go 试验模型；Kimi K2.6 的低额度消耗备选，适合资料整理/中文写作 A/B
+
+  opencode_go_glm51:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: glm-5.1
+    role: experimental_reasoning
+    tokens_per_million: 0.3
+    status: experimental
+    notes: 2026-05-27 定向复测可用；强 reasoning，低 max_tokens 时可能只吐 reasoning，正常调用需给足输出预算
+
+  opencode_go_glm5:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: glm-5
+    role: experimental_reasoning
+    tokens_per_million: 0.25
+    status: experimental
+    notes: OpenCode Go 试验模型；GLM-5.1 的低消耗备选，适合中等推理 A/B
+
+  opencode_go_deepseek_pro:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: deepseek-v4-pro
+    role: experimental_deepseek_pool
+    tokens_per_million: 0.2
+    status: experimental
+    notes: 2026-05-27 定向复测可用；作为包月额度池备选，不替代直连 DeepSeek 主链路
+
+  opencode_go_deepseek_flash:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: deepseek-v4-flash
+    role: experimental_cheap_task
+    tokens_per_million: 0.05
+    status: experimental
+    notes: OpenCode Go DeepSeek Flash；极低消耗轻任务备选，注意官方 5 小时/周/月额度
+
+  opencode_go_qwen37_max:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: anthropic_messages
+    model: qwen3.7-max
+    role: experimental_research_and_planning
+    tokens_per_million: 0.25
+    status: experimental
+    notes: OpenCode Go Anthropic-compatible；Qwen 最新高档模型，适合调研/规划 A/B，先小样本测试
+
+  opencode_go_qwen36:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: qwen3.6-plus
+    role: experimental_research_and_planning
+    tokens_per_million: 0.2
+    status: experimental
+    notes: OpenCode Go Anthropic-compatible；适合中文方案/调研 A/B；暂不自动分配给 Agent
+
+  opencode_go_qwen35:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: qwen3.5-plus
+    role: experimental_cheap_research
+    tokens_per_million: 0.12
+    status: experimental
+    notes: 2026-05-27 定向复测 chat_completions 可用；曾出现一次 Alibaba 429 quota，作为低成本调研备选但不建议默认绑定关键 Agent
+
+  opencode_go_mimo2_pro:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: mimo-v2-pro
+    role: experimental_multimodal
+    tokens_per_million: 0.25
+    status: experimental
+    notes: OpenCode Go 新增模型；官方模型接口可见，使用限制未在当前文档摘录中明确，先手动小样本测试
+
+  opencode_go_mimo2_omni:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: mimo-v2-omni
+    role: experimental_multimodal
+    tokens_per_million: 0.25
+    status: experimental
+    notes: 2026-05-27 定向复测可用；128 tokens 会被 reasoning 消耗导致 final content 为空，建议正常任务给足输出预算
+
+  opencode_go_mimo25_pro:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: mimo-v2.5-pro
+    role: experimental_multimodal
+    tokens_per_million: 0.2
+    status: experimental
+    notes: OpenCode Go MiMo V2.5 Pro；适合作为 TARS/视觉类任务的候选模型，先验证多模态链路
+
+  opencode_go_mimo25:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: mimo-v2.5
+    role: experimental_multimodal
+    tokens_per_million: 0.15
+    status: experimental
+    notes: OpenCode Go MiMo V2.5；轻量多模态/资料理解候选，先验证实际能力
+
+  opencode_go_hy3_preview:
+    provider: opencode-go
+    base_url: https://opencode.ai/zen/go/v1
+    api_key_env: OPENCODE_GO_API_KEY
+    api_mode: chat_completions
+    model: hy3-preview
+    role: experimental_preview
+    tokens_per_million: 0.25
+    status: experimental
+    notes: OpenCode Go 预览模型；官方模型接口可见但文档限制未明确，不建议绑定默认 Agent
+
   # ── Claude：coding ────────────────────────────────────────────────────────
   claude_sonnet:
     provider: anthropic
@@ -156,12 +337,40 @@ routing_rules:
   chinese_research:
     models:
       - deepseek_flash
+      - opencode_go_kimi26
+      - opencode_go_kimi25
+      - opencode_go_qwen37_max
+      - opencode_go_qwen36
+      - opencode_go_qwen35
     description: 中文调研、长文总结、内容创作；Kimi/Ark 不再默认使用
 
   complex_reasoning:
     models:
       - deepseek_pro
+      - opencode_go_glm51
+      - opencode_go_glm5
+      - opencode_go_deepseek_pro
     description: 复杂推理、深度分析、多步逻辑
+
+  opencode_go_pool:
+    models:
+      - opencode_go_minimax27
+      - opencode_go_minimax25
+      - opencode_go_kimi26
+      - opencode_go_kimi25
+      - opencode_go_glm51
+      - opencode_go_glm5
+      - opencode_go_deepseek_pro
+      - opencode_go_deepseek_flash
+      - opencode_go_qwen37_max
+      - opencode_go_qwen36
+      - opencode_go_qwen35
+      - opencode_go_mimo2_pro
+      - opencode_go_mimo2_omni
+      - opencode_go_mimo25_pro
+      - opencode_go_mimo25
+      - opencode_go_hy3_preview
+    description: OpenCode Go 包月模型池；仅后台手动选择或 A/B，不作为 Hermes 自动主路由
 
   complex_coding:
     models:

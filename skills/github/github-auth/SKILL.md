@@ -259,3 +259,27 @@ fi
 | Credentials not persisting | Check `git config --global credential.helper` — must be `store` or `cache` |
 | Multiple GitHub accounts | Use SSH with different keys per host alias in `~/.ssh/config`, or per-repo credential URLs |
 | `gh: command not found` + no sudo | Use git-only Method 1 above — no installation needed |
+| **GitHub MCP "Bad credentials" / 401** | `GITHUB_TOKEN` in `.env` expired, but `gh` still authenticated → use recovery below |
+
+### Expired Token Recovery (gh auth still valid)
+
+When `gh auth status` shows logged in but `$GITHUB_TOKEN` returns 401:
+
+```bash
+# Verify gh is still good
+gh auth status && curl -s -o /dev/null -w "%{http_code}" \
+  -H "Authorization: token $(gh auth token)" https://api.github.com/user
+# Expected: 200
+
+# If 200 → sync gh token into .env
+python3 -c "
+import re
+new_token = '$(gh auth token)'
+env = open('/Users/gu/.hermes/.env').read()
+env = re.sub(r'^GITHUB_TOKEN=.*$', f'GITHUB_TOKEN={new_token}', env, flags=re.M)
+open('/Users/gu/.hermes/.env', 'w').write(env)
+print('Updated GITHUB_TOKEN in .env')
+"
+```
+
+This is faster than regenerating a token on github.com — `gh` stores its own OAuth token in macOS keychain, which often outlives the env var copy.

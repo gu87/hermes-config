@@ -1365,6 +1365,7 @@ gateway.error.log 输出的关键警告和错误。
 | 方案策划/文档撰写 | pirlo（方案策划） | — | 纯文职，无 terminal |
 | 分析/决策/方案审核 | hermes-internal（审核角色） | — | readonly，deepseek-v4-pro |
 | 后台常驻任务 | deepseek-worker | 手动分批执行 | mailbobx 异步通信 |
+| **机械文件扫描** (find/ls/du/文件枚举) | **deepseek-tui** | — | 纯读操作、无副作用、量大时协调者不应占用自身上下文 |
 
 ### 反模式
 
@@ -1377,3 +1378,4 @@ gateway.error.log 输出的关键警告和错误。
 | 子 Agent 输出直接给用户 | 先过 Review Gate（语义检查） |
 | 忽略反馈 | 分析反馈 → 按 USER.md / MEMORY.md / skill / Obsidian 分层沉淀 |
 | deepseek-worker 用 CLI 调用 | deepseek-worker 只能通过 Mailbox 异步派发 |
+| **协调者自己跑 find/ls/du 做文件扫描** | **派给 deepseek-tui — 即使 ≤3 步，量大文件枚举也不占用协调者上下文** |

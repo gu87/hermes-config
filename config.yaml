@@ -31,7 +31,6 @@ terminal:
   env_passthrough:
   - VOLCANO_ARK_API_KEY
   - DEEPSEEK_API_KEY
-  - KIMI_API_KEY
   - ANTHROPIC_API_KEY
   shell_init_files: []
   auto_source_bashrc: true
@@ -372,16 +371,17 @@ approvals:
   mcp_reload_confirm: true
   destructive_slash_confirm: true
 command_allowlist:
-- shell command via -c/-lc flag
-- pipe remote content to shell
+- overwrite project env/config file
 - delete in root path
-- overwrite project env/config via redirection
-- overwrite system file via redirection
 - script execution via -e/-c flag
+- pipe remote content to shell
+- overwrite project env/config via redirection
 - git force push (rewrites remote history)
 - stop/restart hermes gateway (kills running agents)
-- script execution via heredoc
+- overwrite system file via redirection
 - recursive delete
+- shell command via -c/-lc flag
+- script execution via heredoc
 quick_commands: {}
 hooks: {}
 hooks_auto_accept: false
@@ -504,16 +504,32 @@ feishu:
         \u62A5 \u2192 Intelligence \u60C5\u62A5\u7814\u7A76\u5458\n\u684C\u9762/\u6D4F\
         \u89C8\u5668 GUI/\u622A\u56FE \u2192 TARS \u684C\u9762\u64CD\u4F5C\u5458\n\
         \u9AD8\u98CE\u9669\u9A8C\u6536 \u2192 Ambrosini \u8D28\u91CF\u95E8\u536B\n\
-        \n\u4EE3\u7801\u63A2\u7D22\u4F18\u5148\u4F7F\u7528 CodeGraph\uFF1A\u5982\u679C\
-        \u9879\u76EE\u5B58\u5728 .codegraph/\uFF0C\u6280\u672F\u7FFB\u8BD1\u5B98\u3001\
-        \u4EE3\u7801\u5BA1\u67E5\u5B98\u548C\u4E3B\u7A0B\u6267\u884C\u5B98\u5E94\u4F18\
-        \u5148\u7528 codegraph_search\u3001codegraph_callers\u3001codegraph_callees\u3001\
-        codegraph_impact \u7B49\u8F7B\u91CF\u67E5\u8BE2\u5B9A\u4F4D\u4E0A\u4E0B\u6587\
-        \uFF0C\u907F\u514D\u53CD\u590D grep/read\uFF1B\u53EA\u6709\u9700\u8981\u5B8C\
-        \u6574\u6E90\u7801\u7247\u6BB5\u65F6\u624D\u4F7F\u7528 codegraph_context\u3002\
-        \n\n\u6D89\u53CA\u6587\u4EF6\u4FEE\u6539\u3001\u4EE3\u7801\u6267\u884C\u3001\
-        \u5BC6\u94A5\u3001\u5220\u9664\u3001\u90E8\u7F72\u3001\u7CFB\u7EDF\u670D\u52A1\
-        \u53D8\u66F4\uFF0C\u5FC5\u987B\u5148\u786E\u8BA4\u518D\u6267\u884C\u3002"
+        \n\n\u4EFB\u52A1-\u5DE5\u5177\u5339\u914D\u786C\u89C4\u5219\uFF1A\n\u4E09\u6B65\
+        \u89C4\u5219\u53EA\u662F\u515C\u5E95\uFF0C\u4E0D\u662F\u4E3B\u8DEF\u7531\u3002\
+        \u6536\u5230\u4EFB\u52A1\u540E\u5148\u68C0\u67E5\u662F\u5426\u5B58\u5728\u7CBE\
+        \u51C6\u5339\u914D\u7684 skill\u3001service \u6216\u4E13\u804C Agent\uFF1B\
+        \u82E5\u5B58\u5728\uFF0C\u5FC5\u987B\u4F18\u5148\u8C03\u7528\uFF0C\u4E0D\u5F97\
+        \u56E0\u4E3A\u201C\u6B65\u9AA4\u5C11\u201D\u800C\u81EA\u5DF1\u624B\u5199\u6216\
+        \u7ED5\u8FC7\u3002\n\u5178\u578B\u6620\u5C04\uFF1AMarkdown/\u6587\u6863 \u2192\
+        \ HTML \u5FC5\u987B\u4F18\u5148\u4F7F\u7528 html-anything\uFF1B\u5546\u4E1A\
+        \u65B9\u6848/\u5C55\u793A\u578B\u5185\u5BB9 \u2192 Pirlo\uFF1B\u4EE3\u7801\
+        \u4FEE\u6539 \u2192 Claude/DeepSeek Worker\uFF0C\u5FC5\u8981\u65F6 Codex/Ambrosini\
+        \ \u5BA1\u67E5\uFF1BGUI/\u6D4F\u89C8\u5668/\u622A\u56FE\u9A8C\u8BC1 \u2192\
+        \ TARS\u3002\n\u9A6C\u8482\u5C3C\u53EF\u4EE5\u505A\u534F\u8C03\u3001\u5224\
+        \u65AD\u3001\u9A8C\u6536\u548C\u4F4E\u98CE\u9669\u67E5\u8BE2\uFF1B\u6D89\u53CA\
+        \u7528\u6237\u53EF\u89C1\u8BBE\u8BA1\u578B\u4EA7\u7269\u3001\u957F\u671F\u6587\
+        \u4EF6\u4EA7\u7269\u3001\u4E13\u7528\u5DE5\u5177\u8986\u76D6\u4EFB\u52A1\u65F6\
+        \uFF0C\u4E0D\u76F4\u63A5\u4E0B\u573A\u751F\u4EA7\u3002\n\n\u4EE3\u7801\u63A2\
+        \u7D22\u4F18\u5148\u4F7F\u7528 CodeGraph\uFF1A\u5982\u679C\u9879\u76EE\u5B58\
+        \u5728 .codegraph/\uFF0C\u6280\u672F\u7FFB\u8BD1\u5B98\u3001\u4EE3\u7801\u5BA1\
+        \u67E5\u5B98\u548C\u4E3B\u7A0B\u6267\u884C\u5B98\u5E94\u4F18\u5148\u7528 codegraph_search\u3001\
+        codegraph_callers\u3001codegraph_callees\u3001codegraph_impact \u7B49\u8F7B\
+        \u91CF\u67E5\u8BE2\u5B9A\u4F4D\u4E0A\u4E0B\u6587\uFF0C\u907F\u514D\u53CD\u590D\
+        \ grep/read\uFF1B\u53EA\u6709\u9700\u8981\u5B8C\u6574\u6E90\u7801\u7247\u6BB5\
+        \u65F6\u624D\u4F7F\u7528 codegraph_context\u3002\n\n\u6D89\u53CA\u6587\u4EF6\
+        \u4FEE\u6539\u3001\u4EE3\u7801\u6267\u884C\u3001\u5BC6\u94A5\u3001\u5220\u9664\
+        \u3001\u90E8\u7F72\u3001\u7CFB\u7EDF\u670D\u52A1\u53D8\u66F4\uFF0C\u5FC5\u987B\
+        \u5148\u786E\u8BA4\u518D\u6267\u884C\u3002"
 FEISHU_HOME_CHANNEL: oc_a17156b52b4723f0293bfa659f4b5044
 mcp_servers:
   codegraph:
@@ -562,7 +578,7 @@ mcp_servers:
     - minimax-coding-plan-mcp
     - -y
     env:
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY}
+      MINIMAX_API_KEY: sk-cp-DXsdN6GCPV-90pEfnboQswQnowCyvJ1jIy_sZW_WgtCThMN4UhqzrSziDrbbKiRjP_3T4EEuQBd9jjMjSjpxJrgxSuzBY01ygLFyLMsDT0GPf4a8RS6tlkg
       MINIMAX_API_HOST: https://api.minimaxi.com
 model_aliases:
   co:
@@ -612,3 +628,7 @@ reasoning: none
 fallback_model:
   provider: openrouter
   model: anthropic/claude-sonnet-4
+plugins:
+  enabled:
+  - claude-code-mailbox
+  disabled: []

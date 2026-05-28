@@ -14,7 +14,7 @@ echo "[OD] daemon PID: $DAEMON_PID"
 
 # Serve static web on 17456
 cd ../web/out
-python3 -m http.server 17456 &
+python3 -m http.server 17456 --bind 127.0.0.1 &
 WEB_PID=$!
 echo "[OD] web PID: $WEB_PID"
 

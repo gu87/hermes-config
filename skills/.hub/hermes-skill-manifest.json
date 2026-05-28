@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "description": "Hermes lightweight skill routing manifest. Tracks high-signal local skills only; the large external hub index remains separate.",
+  "skills": [
+    {
+      "id": "verification-loop",
+      "path": "skills/software-development/verification-loop/SKILL.md",
+      "category": "software-development",
+      "risk_level": "R2",
+      "agents": ["claude", "codex", "ambrosini", "hermes-internal"],
+      "tool_requirements": ["file", "terminal"],
+      "activation_keywords": ["验证", "测试", "质量门", "完成前检查", "verification"]
+    },
+    {
+      "id": "code-tour",
+      "path": "skills/software-development/code-tour/SKILL.md",
+      "category": "software-development",
+      "risk_level": "R1",
+      "agents": ["codex", "hermes-internal", "claude"],
+      "tool_requirements": ["file"],
+      "activation_keywords": ["代码导览", "onboarding", "架构导览", "PR tour", "code tour"]
+    },
+    {
+      "id": "codex-superpowers",
+      "path": "skills/codex-superpowers/SKILL.md",
+      "category": "review",
+      "risk_level": "R2",
+      "agents": ["codex", "hermes-internal", "ambrosini"],
+      "tool_requirements": ["file"],
+      "activation_keywords": ["代码审查", "review", "质量", "安全漏洞"]
+    },
+    {
+      "id": "hermes-subagent-delegation",
+      "path": "skills/hermes-subagent-delegation/SKILL.md",
+      "category": "hermes",
+      "risk_level": "R3",
+      "agents": ["hermes-internal"],
+      "tool_requirements": ["file", "terminal"],
+      "activation_keywords": ["子Agent", "delegate_task", "任务包", "outbox", "agent-registry"]
+    },
+    {
+      "id": "hermes-multi-agent-research",
+      "path": "skills/hermes-multi-agent-research/SKILL.md",
+      "category": "autonomous-ai-agents",
+      "risk_level": "R2",
+      "agents": ["hermes-internal"],
+      "tool_requirements": ["file", "web"],
+      "activation_keywords": ["多Agent研究", "调研", "任务拆分", "mailbox"]
+    },
+    {
+      "id": "codebase-inspection",
+      "path": "skills/github/codebase-inspection/SKILL.md",
+      "category": "github",
+      "risk_level": "R1",
+      "agents": ["hermes-internal", "claude", "codex"],
+      "tool_requirements": ["file", "terminal"],
+      "activation_keywords": ["代码库检查", "codebase", "影响面", "grep"]
+    },
+    {
+      "id": "github-code-review",
+      "path": "skills/github/github-code-review/SKILL.md",
+      "category": "github",
+      "risk_level": "R2",
+      "agents": ["codex", "ambrosini"],
+      "tool_requirements": ["file", "terminal"],
+      "activation_keywords": ["GitHub 审查", "PR review", "code review"]
+    },
+    {
+      "id": "github-pr-workflow",
+      "path": "skills/github/github-pr-workflow/SKILL.md",
+      "category": "github",
+      "risk_level": "R3",
+      "agents": ["claude"],
+      "tool_requirements": ["file", "terminal", "git"],
+      "activation_keywords": ["PR", "pull request", "merge", "gh"]
+    },
+    {
+      "id": "github-repo-risk-assessment",
+      "path": "skills/github/github-repo-risk-assessment/SKILL.md",
+      "category": "github",
+      "risk_level": "R2",
+      "agents": ["hermes-internal", "codex"],
+      "tool_requirements": ["file", "terminal"],
+      "activation_keywords": ["仓库风险", "repo risk", "安全评估"]
+    },
+    {
+      "id": "python-debugpy",
+      "path": "skills/software-development/python-debugpy/SKILL.md",
+      "category": "software-development",
+      "risk_level": "R2",
+      "agents": ["claude", "deepseek-tui"],
+      "tool_requirements": ["file", "terminal"],
+      "activation_keywords": ["debugpy", "Python 调试", "断点"]
+    },
+    {
+      "id": "node-inspect-debugger",
+      "path": "skills/software-development/node-inspect-debugger/SKILL.md",
+      "category": "software-development",
+      "risk_level": "R2",
+      "agents": ["claude", "deepseek-tui"],
+      "tool_requirements": ["file", "terminal"],
+      "activation_keywords": ["node inspect", "Node 调试", "JavaScript 调试"]
+    },
+    {
+      "id": "anysearch-lite",
+      "path": "skills/research/anysearch-lite/SKILL.md",
+      "category": "research",
+      "risk_level": "R1",
+      "agents": ["deepseek-tui", "intelligence"],
+      "tool_requirements": ["terminal", "web"],
+      "activation_keywords": ["搜索", "search", "最新", "调研"]
+    }
+  ]
+}
+

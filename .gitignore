@@ -23,6 +23,7 @@
 !skills/**/SKILL.md
 !skills/**/DESCRIPTION.md
 !skills/**/PORT_NOTES.md
+!skills/.hub/hermes-skill-manifest.json
 
 # Historical/reference files often contain raw session records, example tokens,
 # URLs with access tokens, or copied credentials. Add specific clean references
@@ -39,6 +40,8 @@ skills/**/workflows/
 !templates/
 !templates/**/
 !templates/**/*.md
+!.tours/
+!.tours/.gitkeep
 
 # Configuration layer — the deployment skeleton
 !config.yaml
