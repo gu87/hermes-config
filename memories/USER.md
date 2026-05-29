@@ -1,21 +1,15 @@
-Gu，懂球帝营销中心负责人，主要工作围绕品牌营销、方案策划、创意构思、资源整合、客户信息与项目推进。
+Gu，懂球帝营销中心负责人，工作重点是品牌营销、方案策划、创意构思、资源整合、客户信息与项目推进。
 §
-Gu 偏好直接、准确、少废话的沟通方式。可以主动判断和执行，但关键不确定、不可逆操作、会影响核心配置或数据时必须先确认。
+沟通偏好：直接、准确、少废话；指令通常很短，期望 Agent 主动补齐上下文、拆解任务并推进。不喜欢空洞确认、反复追问已可推断信息、沉默重试或重新争辩已确认决策。关键不确定、不可逆操作、核心配置或数据变更必须先确认。
 §
-Gu 给指令通常很短，希望 Agent 先理解上下文、补齐任务拆解，再给可执行结果；不喜欢反复追问已可推断的信息。
+执行偏好：先研究再动手，根因修复，必须有效验证。遇到阻塞要及时反馈根因、已试方案和替代路径，不要连续重复同一失败方法。
 §
-Gu 重视先研究再动手、根因修复和有效验证。不接受只解释失败原因，遇到阻塞要给替代方案。
+计划偏好：方案必须可执行，包含清晰分工、编号子任务、验收标准、断点恢复和进度板；“太粗了”表示需要细化到可交接执行。
 §
-Gu 对分工和功能边界极度敏感。角色层面：反对把角色合并回马蒂尼，每个 Agent 必须独立边界。工具/项目层面：「截图就是截图，做结案报告就做结案报告」—— 不允许合并不同职责的工具。评估开源项目时必须按功能域独立判断，不推荐跨界整合的方案。
+Agent 系统偏好：坚持角色分工和功能边界，反对把 Agent 角色合并回马蒂尼；评估工具/项目时按功能域独立判断，不推荐跨界混合方案。Hermes 应承担主控协调并在交付前自行验收。
 §
-Gu 希望 Hermes 在复杂任务中承担主控协调角色，能按需协调其他 Agent，并在交付前自行验收。
+决策偏好：已确认的角色、框架节点和设计方向默认固定，后续直接推进下一个未确认点，不要反复重开已定事项。
 §
-Gu expects prompt feedback when issues arise. "有问题你要及时反馈给我" — when delegation fails, tools error, or any blocker occurs, report immediately instead of silently retrying. Don't retry the same failed approach 3 times without informing Gu.
+数据与展示偏好：优先表格对比和数据驱动回答；TARS/桌面截图必须裁到 App 窗口区域；数据展示优先飞书 Sheet，除非需要关联、公式或权限管理才用 Base。
 §
-Gu requires project plans to be executable-grade: clear division of labor (who does what), numbered sub-tasks with acceptance criteria, breakpoint recovery instructions (so anyone can pick up after interruption), and a progress board. "太粗了" feedback means the first draft was too vague — iterate to executable level.
-§
-TARS/桌面操作截图必须 crop 到 App 窗口区域，不用全屏。涉及数据展示时优先用飞书电子表格（Sheet）而非多维表格（Base），除非需要关联/公式/权限管理。
-§
-Confirmed design decisions stick and are not re-discussed. When a role or framework node is confirmed (e.g., 马蒂尼 = 总助), subsequent conversation should treat it as fixed and move to the next unconfirmed node. Re-raising settled points frustrates Gu.
-§
-Gu 偏好即时执行而非推迟调度，不要建议"明天"做。数据驱动回答，优先表格对比。停止/打断时停止解释。指令短，期望补齐上下文。
+节奏偏好：偏好即时执行而非推迟调度；停止/打断时停止解释。

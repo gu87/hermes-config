@@ -21,12 +21,49 @@ triggers:
 
 两类诊断场景：例行健康快照 + 模型配置排障。
 
+## 零、强制原则：先跑固定 Doctor
+
+系统自检必须先运行：
+
+```bash
+python3 /Users/gu/.hermes/bin/hermes-system-doctor.py
+```
+
+这一步是当前状态的权威入口。报告中每个结论必须带：
+
+- `status`: `OK` / `WARN` / `FAIL` / `STALE`
+- `evidence`: 读取的权威文件或实时检查来源
+- `verify`: 可复现的验证命令
+- 当前时间戳
+
+如果没有实时验证，只能写成 `STALE` 或“历史日志信号”，不能写成当前故障。
+
+### 权威源固定表
+
+| 主题 | 唯一权威源 | 禁止误读 |
+|---|---|---|
+| Built-in memory | `/Users/gu/.hermes/memories/MEMORY.md` + `/Users/gu/.hermes/memories/USER.md` | 不读根目录 `MEMORY.md`；`user-profile.md` 只算 legacy/extra |
+| Agent 编制 | `config/agent-registry.json` + `hermes-agent/configs/managed_agents/agents.yaml` | 不只读 SOUL.md / prompt |
+| 模型路由 | `config/models.yaml` | 不用 `config.yaml model_aliases` 判断实际 model_ref |
+| 运行态 | `ps` / TCP connect / `/v1/models` live call | 不用旧日志替代 |
+| 日志 | `logs/gateway*.log` / `errors.log` | 只能作为历史线索，不能单独定性当前故障 |
+
 ## 一、系统健康快照
 
 ### 触发条件
 - 用户说"检查一下系统"、"agent状态"、"自我检查"、"系统快照"
 
-### 标准流程（8 步）
+### 标准流程
+
+先执行固定 doctor：
+
+```bash
+python3 /Users/gu/.hermes/bin/hermes-system-doctor.py
+```
+
+若 doctor 某项 `FAIL` 或 `WARN`，再进入下面的专项排查。不要跳过 doctor 直接凭日志下结论。
+
+### 旧版手动流程（仅用于 doctor 不可用时）
 
 ```bash
 # 1. 进程检查
@@ -53,6 +90,7 @@ df -h /
 
 # 7. 错误日志 — tail -30 /Users/gu/.hermes/logs/errors.log
 # 重点关注：AuthenticationError、ConnectionError、keepalive failed、chain depth exceeded
+# 注意：日志只作为历史线索，必须用实时 smoke test 复核后才能定性为当前故障
 
 # 8. 定时任务 — cronjob(action='list')
 ```
@@ -193,7 +231,7 @@ skill_view(name) → 读 SKILL.md frontmatter 的 agents: 声明
 ### 1. 用系统 prompt 注入标签判断字符数
 
 **❌ 错误**: 从 system prompt 的 `[99% — 1,364/1,375 chars]` 标签判断 User Profile 容量
-**✅ 正确**: `wc -m /Users/gu/.hermes/memories/user-profile.md` 读源文件实际字符数。系统注入标签是压缩/截断版本，不代表源文件状态。
+**✅ 正确**: `wc -m /Users/gu/.hermes/memories/USER.md` 读运行时实际注入源文件。`user-profile.md` 是 legacy/extra 文件，不能作为 Hermes 当前 User Profile 权威源。
 
 ### 2. 用 config.yaml model_aliases 判断 Agent 模型
 
@@ -365,6 +403,8 @@ hermes gateway start
 
 **横向规律**: 任何 `runtime: claude_code_cli` 的 managed agent 都走 FlashAPI 代理，不经过用户本地 Claude Code 的 OAuth session。诊断时先区分「直接 Claude Code CLI」vs「Hermes 委托 Claude agent」。
 
+**验证方法**: Token API 测试结果 ≠ Agent 可用性。必须用 `delegate_task(agent_id='claude')` 实测 Agent。FlashAPI key 返回 401 但 delegate_task 返回 OK → 说明 Agent 走了 CC Switch 而非 FlashAPI，不要误报为 Agent 失效。
+
 **症状**: `git push` 被 GitHub 拒绝，报 `GH013: Repository rule violations — Push cannot contain secrets`，指明 commit 中某文件某行包含 token。
 
 **根因**: `config.yaml` 的 MCP 服务器配置中写入了明文 API token（如 `GITHUB_PERSONAL_ACCESS_TOKEN`、`MINIMAX_API_KEY`）。
@@ -418,6 +458,7 @@ hermes gateway start
 - **不与 Open Design 端口冲突**：OD 用 7456+3000，HTML-Anything 用 14732
 - **只给有 terminal 的 Agent**：只读 Agent 加 terminal 会破坏角色边界，宁可少分配
 - **生产模式优化**：dev 模式进程多、内存高，静态构建 + python http.server 可节省 74% 内存。详见 `references/service-production-mode-optimization.md`
+- `references/system-snapshot-format-2026-05-28.md` — 系统快照标准 6 维格式（Agent/Token/模型/MCP/资源/问题），含飞书友好输出模板
 - `references/model-config-field-map.md` — Gu 的机器实际三层配置映射表，含已验证别名和诊断命令
 - `references/token-efficiency-audit-2026-05-25.md` — 2026-05-25 架构自检实录：配置项发现、浪费模式、修复建议
 - `references/system-audit-2026-05-25.md` — 2026-05-25 全量系统自检实录：5 个关键发现、修复方法、最终状态快照

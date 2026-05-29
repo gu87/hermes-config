@@ -180,7 +180,79 @@ If cron jobs need to survive Mac sleep/wake cycles:
 | `paused` | Manually paused |
 | `failed` | Execution error |
 
-## Common Failure Patterns
+## `no_agent=True` + Script Pattern (Zero-Token Cron)
+
+For cron jobs that produce deterministic output (fixed-format reports, data dumps, API scrapes), use `no_agent=True` with a standalone script. This saves tokens entirely — the script's stdout is delivered verbatim, no LLM involved.
+
+### When to Use
+
+- Output format is fixed and doesn't need reasoning
+- The script does all the work (fetch, parse, format)
+- No conditional logic based on content is needed
+
+### Creation Pattern
+
+```bash
+# 1. Write the script in ~/.hermes/scripts/<name>.py
+# Script prints output to stdout → that's the delivered message
+
+# 2. Create the cron job
+cronjob(
+    action='create',
+    name='Daily Report',
+    schedule='0 9 * * *',
+    script='my-report.py',     # relative to ~/.hermes/scripts/
+    no_agent=True,             # skip LLM, just deliver stdout
+    deliver='feishu:oc_xxxxx'  # explicit target
+)
+```
+
+### Script Contract
+
+- Output to stdout → becomes the delivered message
+- Exit code 0 → delivery succeeds
+- Exit code non-zero → error alert sent to user
+- Empty stdout → SILENT (nothing delivered)
+
+### Real Example: GitHub Trending Top 10
+
+```bash
+# Script: ~/.hermes/scripts/github-trending.py
+# Fetches GitHub trending data, formats as Markdown top-10 list
+# Prints to stdout
+
+cronjob(
+    action='create',
+    name='GitHub 每日 Trending Top 10',
+    schedule='0 9 * * *',
+    script='github-trending.py',
+    no_agent=True,
+    deliver='feishu:oc_xxxxx'
+)
+```
+
+Output example:
+```
+# 🔥 GitHub Trending Top 10 — 2026-05-29
+
+1. **owner/repo** ⭐1234 🍴56 | Python
+   Description here
+   https://github.com/owner/repo
+...
+```
+
+### Comparison: no_agent=True vs False
+
+| 维度 | no_agent=True | no_agent=False |
+|---|---|---|
+| Token 消耗 | 0 | prompt + output tokens |
+| 输出内容 | 脚本 stdout 原文 | LLM 重新组织 |
+| 脚本职责 | 完整输出 | 提供上下文给 LLM |
+| 适用场景 | 固定格式报表 | 需要总结/筛选/判断 |
+
+### Pitfall: CHANGING no_agent After Creation
+
+`cronjob(action='update')` with `no_agent` changed won't take effect until the job is paused/resumed or the gateway restarts. Safer: remove and recreate.
 
 1. **Job not firing** → Gateway down. Start Gateway.
 2. **Job fires but does nothing** → Prompt overwritten (see Pitfall #1). Restore from jobs.json backup or session history.
