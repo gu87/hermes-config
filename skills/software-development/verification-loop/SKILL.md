@@ -261,6 +261,8 @@ Evidence:
 
 **Commit Staging Plan 模板**：`docs/reports/hermes-v2.8.1-commit-staging-plan.md`（变更文件 6 分类法：必须提交/可选/报告/本地运行时/历史遗留/敏感配置）
 
+**完整 8 步 Release 工作流**：`references/hermes-self-stabilization-release-workflow.md`（提交前状态确认 → Release Note → Staging Plan add → 安全检查 → Commit → Doctor → Tag → 最终汇报；含敏感信息扫描 grep 模式）
+
 ### ⚠️ Pitfall: outbox.status 双校验冲突
 
 `verify-task.py` 对 outbox.status 执行两次校验，使用不同枚举集：
