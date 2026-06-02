@@ -103,15 +103,15 @@ agents:
 - Task has no file outputs → use Hermes internal reasoning or a research-oriented Agent when available
 - Task scope is too vague to define `allowed_files` → clarify assumptions or ask one focused question if the risk is material
 
-#### Delegation protocol (v2.6)
+#### Delegation protocol (v2.8)
 
-**Step 1: Create inbox** — write `~/.claude/teams/{project}/inbox/{task_id}.json`:
+**Step 1: Create inbox** — prefer `~/.hermes/scripts/compile-task.py` or `templates/inbox_v2_8.json`, then write `~/.claude/teams/{project}/inbox/{task_id}.json`:
 ```json
 {
-  "schema_version": "2.6",
+  "schema_version": "2.8",
   "task_id": "{project}_{YYYYMMDD}_{序号}",
-  "agent": "claude",
-  "status": "pending",
+  "agent_id": "claude",
+  "status": "created",
   "goal": "一句话描述要交付什么",
   "allowed_files": ["必须指定具体文件或glob，不允许为空"],
   "acceptance_criteria": {
@@ -125,37 +125,39 @@ agents:
   },
   "output_contract": {
     "path": "~/.claude/teams/{project}/outbox/{task_id}_result.json",
-    "format": "json"
+    "format": "json",
+    "schema": "templates/outbox_v2_8.json"
   }
 }
 ```
 
-**Step 2: Dispatch** using `delegate-v26.sh`, the current delegation tool, or an appropriate live Agent profile. Claude Code is one option, not the only code executor.
+**Step 2: Dispatch** using the live Hermes runtime `delegate_task(agent_id=...)` entrypoint, or an appropriate live Agent profile. Claude Code is one option, not the only code executor. Do not use deprecated `delegate-v26.sh` / `delegate-v27.sh` as the new default path.
 
 **Step 3: Always include in Claude Code prompt**:
 ```
-你正在执行一个 v2.6 任务。任务描述和约束见 inbox 文件。
+你正在执行一个 v2.8 任务。任务描述和约束见 inbox 文件。
 完成后，请将结果写入 outbox 文件（路径见 inbox.output_contract.path）。
 outbox 必须是合法 JSON...
 ```
 
-**Step 4: Verify** — after completion, run `verify-task.py` and `git diff --name-only` to detect changed files.
+**Step 4: Verify** — after completion, run `verify-task.py --summary` and `git diff --name-only` to detect changed files. Treat exit code `0` as ready to deliver, `2` as human/Ambrosini review required, and `1` as hard failure requiring revision before delivery.
 
-**Step 5: Human review** — all tasks end in `waiting_for_verification`. Only human moves to `completed`.
+**Step 5: Human review** — execution tasks normally end in `waiting_for_verification`. Only human/Ambrosini review or an explicit main-agent quality gate moves the task to `completed`.
 
 #### Safety rules
 - Never delegate with empty `allowed_files`
 - Never skip `verify-task.py` on execution tasks
+- Never collapse `needs_human_review` into `fail`; they trigger different next actions
 - Changed files are detected by `git diff`, not by Agent self-reporting
 
-#### v2.6 changes from v2.5
-| v2.5 | v2.6 |
+#### v2.8 changes from v2.6
+| v2.6 | v2.8 |
 |------|------|
-| `files` field could be empty | `allowed_files` required, no blanks |
-| `changed_files` from Agent self-report | Detected by `git diff --name-only` |
-| Wrapped output had `passed: true` | Marked `format_wrapped_unverified` |
-| `acceptance_criteria` flat list | Split into `auto_checkable`/`human_review`/`evidence_required` |
-| No evidence requirement | `evidence.outputs` required |
+| Informal pending/running result handling | Canonical status machine: `created`, `dispatched`, `running`, `waiting_for_verification`, `needs_human_review`, `completed`, `discarded`, `failed`, `blocked` |
+| `changed_files` could still be confused with Agent self-report | `changed_files_source` must be `git_diff` |
+| Evidence shape was loose | Standard evidence: `changed_files`, `verification_commands`, `verification_output_summary`, `known_risks` |
+| Errors were free text only | `error_taxonomy` object array with canonical error codes |
+| Human-review routing depended on prose | `verify-task.py` exit code `2` explicitly routes to human/Ambrosini review |
 
 ---
 
@@ -1379,3 +1381,4 @@ gateway.error.log 输出的关键警告和错误。
 | 忽略反馈 | 分析反馈 → 按 USER.md / MEMORY.md / skill / Obsidian 分层沉淀 |
 | deepseek-worker 用 CLI 调用 | deepseek-worker 只能通过 Mailbox 异步派发 |
 | **协调者自己跑 find/ls/du 做文件扫描** | **派给 deepseek-tui — 即使 ≤3 步，量大文件枚举也不占用协调者上下文** |
+| Intelligence 首次调用 OpenCode 404 就放弃 | **重试一次** — Intelligence 的 model_strategy 有 fallback 链（opencode_go_qwen37_max → opencode_go_qwen36 → opencode_go_kimi26 → deepseek_flash）。首次 OpenCode API 404 不代表 Agent 不可用，Kimi K2.6 fallback 在调研任务上实测可用（2026-05-30 验证：404 后重试，模型自动降级到 kimi-k2.6，18 次工具调用、55 万 input tokens 完成调研）。遇到 Intelligence 报 404 时，不要下结论说「调研工具不可用」，重试一次即可。 |

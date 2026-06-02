@@ -476,6 +476,7 @@ Verify: `hermes -p <profile> --skills kanban-worker -z "hello"`
 - **[references/2026-05-06-cli-tool-inventory-and-patterns.md](references/2026-05-06-cli-tool-inventory-and-patterns.md)** — Full CLI tool audit: tools I was underusing (lark-cli, gh, tesseract, jq, hermes doctor/insights/logs), correct usage patterns, and iCloud deadlock workaround. Read this for "before going manual, check CLI tools" principle.
 - **[references/2026-05-15-agent-scoped-skills-implementation-pitfalls.md](references/2026-05-15-agent-scoped-skills-implementation-pitfalls.md)** — Batch SKILL.md frontmatter modification pitfalls: safe vs unsafe patterns for YAML frontmatter editing, JSON modification strategy, multi-repo management.
 - **[references/2026-05-15-mcp-audit-workflow.md](references/2026-05-15-mcp-audit-workflow.md)** — Full-system MCP inventory audit: how to check Hermes/Claude Code/DeepSeek TUI/npm/uv/pip for all MCP servers, version checking, and cleanup.
+- **[references/github-trending-analysis-workflow.md](references/github-trending-analysis-workflow.md)** — GitHub Trending 分析工作流：拉取→垃圾过滤→深度分析→Obsidian 归档，含 Intelligence Agent 降级路径。
 
 ---
 

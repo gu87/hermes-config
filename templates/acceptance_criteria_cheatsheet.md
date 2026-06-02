@@ -1,8 +1,60 @@
-# v2.5 验收标准速查卡
+# v2.8 验收标准速查卡
 
-> 规则：子 Agent 只输出事实（summary + changed_files + errors），`verification` 由验收方（verify-task.py / 人工）根据本标准自动生成。
+> 规则：子 Agent 输出事实和证据，`verify-task.py` 负责结构化检查；Ambrosini 或人工负责最终质量判断。
 
 ---
+
+## v2.8 状态机
+
+```text
+created
+dispatched
+running
+waiting_for_verification
+needs_human_review
+completed
+discarded
+failed
+blocked
+```
+
+默认流程：`created -> dispatched -> running -> waiting_for_verification -> completed`。
+
+证据不足时进入 `needs_human_review`；任务失败但可恢复时进入 `blocked`；不可恢复失败进入 `failed`。
+
+## v2.8 标准 evidence
+
+所有执行类任务默认要求：
+
+```json
+{
+  "evidence_required": [
+    "changed_files",
+    "verification_commands",
+    "verification_output_summary",
+    "known_risks"
+  ]
+}
+```
+
+`known_risks: []` 是合法值，表示执行 Agent 明确声明无已知风险。
+
+## v2.8 错误分类
+
+`errors` 非空时必须填写 `error_taxonomy`：
+
+```text
+model_error
+tool_permission_error
+missing_api_key
+timeout
+invalid_output_schema
+verification_failed
+allowed_files_violation
+human_input_required
+runtime_error
+unknown_error
+```
 
 ## 结构化验收字段说明
 
@@ -28,53 +80,25 @@
 
 ```json
 {
-  "acceptance_criteria": [
-    {
-      "item": "任务目标已完成",
-      "check_type": "human_review",
-      "auto_checkable": false,
-      "review_hints": ["对照 inbox.goal 检查 summary 是否覆盖所有要求"]
-    },
-    {
-      "item": "输出内容符合指定用途和受众",
-      "check_type": "human_review",
-      "auto_checkable": false,
-      "review_hints": ["检查表达风格、术语使用是否匹配受众"]
-    },
-    {
-      "item": "没有删除原有关键业务信息",
-      "check_type": "human_review",
-      "auto_checkable": false,
-      "review_hints": ["对照原文件检查关键数据、结论是否保留"]
-    },
-    {
-      "item": "没有新增明显无关内容",
-      "check_type": "human_review",
-      "auto_checkable": false,
-      "review_hints": ["检查新增段落是否与 goal 相关"]
-    },
-    {
-      "item": "没有虚构明确数据、报价、结论或事实",
-      "check_type": "human_review",
-      "auto_checkable": false,
-      "review_hints": ["核对 summary 中的数字、结论是否有来源支撑"]
-    },
-    {
-      "item": "只修改 files 中列出的文件",
-      "check_type": "changed_files_subset",
-      "auto_checkable": true
-    },
-    {
-      "item": "outbox 包含 task_id、status、summary、changed_files、errors",
-      "check_type": "required_fields",
-      "auto_checkable": true
-    },
-    {
-      "item": "changed_files 中的文件真实存在且已被修改",
-      "check_type": "files_exist_and_modified",
-      "auto_checkable": true
-    }
-  ]
+  "acceptance_criteria": {
+    "auto_checkable": [
+      "changed files must be within allowed_files",
+      "outbox must contain all required fields"
+    ],
+    "human_review": [
+      "任务目标已完成",
+      "输出内容符合指定用途和受众",
+      "没有删除原有关键业务信息",
+      "没有新增明显无关内容",
+      "没有虚构明确数据、报价、结论或事实"
+    ],
+    "evidence_required": [
+      "changed_files",
+      "verification_commands",
+      "verification_output_summary",
+      "known_risks"
+    ]
+  }
 }
 ```
 
@@ -527,3 +551,113 @@
 | `content_planning` | ✅ | — |
 | `file_execution` | ✅ | — |
 | `mixed` | ✅ | 按主导类型决定 |
+
+---
+
+## v2.8 Outbox 字段说明
+
+> 模板路径：`templates/outbox_v2_8.json`。所有子 Agent 执行完成后，必须按此模板输出 outbox JSON。
+
+### 核心字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schema_version` | string | 固定为 `"2.8"` |
+| `task_id` | string | 与 inbox 一一对应的任务 ID |
+| `agent_id` | string | 执行 Agent 标识 |
+| `status` | string | v2.8 状态机状态，默认 `waiting_for_verification` |
+| `summary` | string | 一句话说明实际完成内容 |
+| `changed_files` | string[] | 本次任务实际修改的文件列表 |
+| `changed_files_source` | string | **必须为 `"git_diff"`**，表示 changed_files 由系统级 `git diff` 检测，而非 Agent 自述 |
+| `needs_human_review` | boolean | `true` 表示证据不足，需人工介入；`false` 表示证据完整 |
+| `errors` | string[] | 错误列表；非空时必须填写 `error_taxonomy` |
+| `error_taxonomy` | object[] | 错误分类对象数组；每项必须包含 `code` 和 `message`，可选 `recoverable` boolean |
+| `verification` | object | 包含 `status`、`commands`、`output_summary` 的验证信息块 |
+| `evidence` | object | 结构化证据块，含 `changed_files`、`verification_commands`、`verification_output_summary`、`known_risks`、`tool_trace` |
+| `known_risks` | string[] | 已知风险；空数组 `[]` 表示 Agent 明确声明无已知风险 |
+| `notes` | string[] | 补充说明 |
+
+### 关键约束
+
+```text
+1. changed_files 必须由 git diff 检测，禁止 Agent 自述改动。changed_files_source 始终为 "git_diff"。
+2. needs_human_review = true 时，status 自动进入 needs_human_review，等待人工/Ambrosini 介入。
+3. errors 非空时 error_taxonomy 必填；每个 `code` 必须来自预定义类目。
+4. verification.commands 中应填写实际运行的验证命令，verification.output_summary 填写实际输出摘要。
+```
+
+### error_taxonomy 示例
+
+```json
+[
+  {
+    "code": "verification_failed",
+    "message": "pytest failed",
+    "recoverable": true
+  }
+]
+```
+
+---
+
+## Review Gate v2.8
+
+> 规则：`verify-task.py` 先做结构化验证（pass / needs_human_review / fail），Review Gate 再做语义审查（approved / revision_needed / rejected）。只有结构通过的 outbox 才进入语义审查。
+
+### 三项 Gate Decision
+
+| decision | 含义 | 触发条件 | 后续动作 |
+|----------|------|---------|---------|
+| `approved` | 通过，交付用户 | 结构无问题 + 语义全部通过 | 标记 `completed`，内容交付用户 |
+| `revision_needed` | 退回修改 | 结构通过但有小问题（summary 不准、遗漏 must_keep、格式偏差等） | 退回原 Agent，附具体 revision_notes，修正后重走 verify→review |
+| `rejected` | 拒绝，升级人工 | 结构性违规（verify 返回 fail）、严重虚构、多次 revision 仍不达标 | 标记 `failed` 或 `needs_human_review`，通知人工/Ambrosini 介入 |
+
+### verify-task.py 结果 → Gate Decision 映射
+
+```
+verify-task.py exit 0 (pass)
+  → gate: approved 或 revision_needed
+  → 不可 rejected（结构已通过）
+
+verify-task.py exit 2 (needs_human_review)
+  → gate: approved / revision_needed / rejected 均可
+  → 需逐项检查 human_review 类 criteria
+
+verify-task.py exit 1 (fail)
+  → gate: rejected
+  → 结构违规的 outbox 不进入语义审查，直接拒绝
+```
+
+### 语义检查清单 (SC-01 ~ SC-08)
+
+| ID | 检查项 | 类别 |
+|----|--------|------|
+| SC-01 | summary 是否准确反映 changed_files 实际改动 | accuracy |
+| SC-02 | must_keep 约束是否全部满足 | compliance |
+| SC-03 | must_avoid 约束是否全部遵守 | compliance |
+| SC-04 | success_criteria 完成标准是否全部达到 | completeness |
+| SC-05 | 输出质量是否适合交付给用户 | quality |
+| SC-06 | 是否有虚构事实、数据或未经支持的断言 | integrity |
+| SC-07 | Agent 是否诚实声明了 known_risks | integrity |
+| SC-08 | evidence 块是否提供了足够的验证证据 | completeness |
+
+### 何时退回 Agent vs 升级人工
+
+| 场景 | 路由 |
+|------|------|
+| summary 措辞不准、缺少关键说明 | → revision_needed，退回 Agent |
+| 漏改了 must_keep 中要求的某项 | → revision_needed，退回 Agent |
+| 输出格式有小偏差（如缺少换行、字段命名不规范） | → revision_needed，退回 Agent |
+| 改动了 must_avoid 禁止的文件 | → rejected，升级人工 |
+| 虚构了不存在的数据或事实 | → rejected，升级人工 |
+| 完全偏离任务目标，产出了无关内容 | → rejected，升级人工 |
+| 同一任务经历 3+ 次 revision 仍不达标 | → rejected，升级人工 |
+| verify-task.py 返回 fail | → rejected，升级人工 |
+
+### 流水线位置
+
+```
+子 Agent 输出 outbox → verify-task.py (结构化) → Review Gate (语义) → 交付/退回/升级
+```
+
+详细 schema 见 `templates/review_v2_8.json`。

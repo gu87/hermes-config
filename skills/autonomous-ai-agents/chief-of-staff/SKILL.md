@@ -320,14 +320,14 @@ A 马蒂尼（总助）— DeepSeek V4 Flash
   │   preferred_agent 使用当前注册表中的 machine ID；不在记忆中硬编码能力矩阵
   │
   ├─ Step 6: 派发执行
-  │   需要委托时调用 delegate-v27.sh --task-card <path> 或当前可用委托工具
+  │   需要委托时调用 Hermes runtime delegate_task(agent_id=...)
   │   子 Agent 收到编译后的 brief（must_keep / must_avoid / success_criteria）
   │   不是用户原话
   │
   ├─ Step 7: 结构验收
-  │   对应 delegate-v27.sh 内部步骤 4-7 (git diff → 输出包装 → verify → 状态更新)
-  │   检查：字段齐全 / 文件范围 / git diff 检测
-  │   由 delegate-v27.sh 自动完成，Chief of Staff 无需手动操作
+  │   运行 verify-task.py --summary
+  │   检查：字段齐全 / 文件范围 / git diff 检测 / evidence / error_taxonomy
+  │   按 exit code 分流：0 交付、2 语义验收、1 返工或阻塞
   │
   ├─ Step 8: Review Gate（语义验收）
   │   对照 compiled_intent.real_task 检查是否完成真实意图
@@ -366,7 +366,7 @@ A 马蒂尼（总助）— DeepSeek V4 Flash
   "must_avoid": ["绝对不能做的"],
   "success_criteria": ["成功的定义"],
   "ambiguities": ["尚不明确、可能需要追问的点"],
-  "preferred_agent": "current machine ID from live registry, e.g. codex | claude | kimi | hermes-internal | deepseek-worker | browser/tools",
+  "preferred_agent": "current machine ID from live registry, e.g. codex | claude | deepseek-tui | hermes-internal | browser/tools",
   "task_type": "simple | single-agent | multi-agent",
   "domain": "code | content | data | creative | admin",
   "relevant_files": [],
@@ -387,28 +387,35 @@ compile-task.py --intent intent.json --project <项目名> --output task_card.js
 compile-task.py --request "用户原话" --project staam --output task_card.json
 ```
 
-Task Card 会被写入 `~/.claude/teams/{project}/inbox/` 并可直接传给 `delegate-v27.sh`。不需要委托的简单任务不必生成 Task Card。
+Task Card 会被写入 `~/.claude/teams/{project}/inbox/`，供 Hermes runtime `delegate_task(agent_id=...)` 使用。不需要委托的简单任务不必生成 Task Card。
 
 ## 派发执行
 
 ```bash
-delegate-v27.sh --task-card <task_card_path>
+hermes -z "delegate_task(agent_id='<agent_id>')" --skills hermes-subagent-delegation,verification-loop --toolsets delegation,file,terminal
 ```
 
-如果当前系统提供了更新的委托入口或 agent-registry 中的 agent 状态变化，以实时配置和实际验证为准。
+`delegate-v27.sh` 已废弃；不要把它作为新流程入口。优先使用 Hermes runtime 的 `delegate_task(agent_id=...)`，agent id 以 `config/agent-registry.json` 和实际工具枚举为准。
 
-delegate-v27.sh 会自动：
-- 提取 inbox 字段
-- 记录 git 基线
-- 将编译后的意图发给子 Agent
-- git diff 检测 changed_files
-- 诚实包装（Agent 未写 outbox 时）
-- 运行 verify-task.py 结构验收
-- 更新 agent-monitor 状态
+子 Agent 完成后，主 Hermes 必须运行结构验收：
+
+```bash
+python3 ~/.hermes/scripts/verify-task.py --inbox <task_card_path> --outbox <outbox_path> --summary
+```
+
+按 exit code 分流：
+
+| exit code | result | 主控动作 |
+|-----------|--------|----------|
+| 0 | `pass` | 可以整合并交付用户 |
+| 2 | `needs_human_review` | 不算失败；转 Ambrosini 或人工语义验收 |
+| 1 | `fail` | 不得交付；返工、重试或报告阻塞 |
+
+主控必须区分 `needs_human_review` 和 `fail`：前者表示结构和事实检查可能已通过但仍有人工判断项，后者表示结构、范围、证据或 errors 存在硬失败。
 
 ## Review Gate 检查清单
 
-delegate-v27.sh 完成后，你必须进行语义验收。参考 Task Card 中的 `review_gate_criteria` 字段获取结构化的验收条件：
+结构验收返回 `needs_human_review` 或任务风险较高时，你必须进行语义验收。参考 Task Card 中的 `review_gate_criteria` 字段获取结构化的验收条件：
 
 ```
 1. 是否完成了真实意图（compiled_intent.real_task / review_gate_criteria.must_match_real_intent），而不只是表面任务？
@@ -484,7 +491,7 @@ ingest-feedback.py --reject "冗长的背景说明"
 | 多Agent团队架构 | `references/multi-agent-team-architecture.md` | 总助模式团队框架、上下文隔离策略、记忆流动规则 |
 | 预处理委托模式 | `references/preprocessing-delegation.md` | 便宜模型预处理、贵模型执行的省钱模式 |
 | Task Card 组装 | `~/.hermes/scripts/compile-task.py` | 数据层合并 |
-| 派发脚本 | `~/.hermes/scripts/delegate-v27.sh` | 执行管线 |
+| 派发入口 | Hermes runtime `delegate_task(agent_id=...)` | 执行管线 |
 | 结构验证 | `~/.hermes/scripts/verify-task.py` | 字段/文件/证据检查 |
 | Obsidian 库结构 | `references/obsidian-vaults.md` | 双 vault 路径、目录结构、文件保存规则 |
 | 新工具部署指南 | `references/new-tool-deployment-guide.md` | git clone → 装依赖 → 配端口 → 启动 → 验收 → 记录的标准流程 |

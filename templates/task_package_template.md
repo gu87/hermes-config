@@ -17,6 +17,22 @@ priority: P0/P1/P2
 estimated_complexity: S/M/L/XL
 ```
 
+### 状态机
+
+任务状态必须使用以下枚举：
+
+```text
+created
+dispatched
+running
+waiting_for_verification
+needs_human_review
+completed
+discarded
+failed
+blocked
+```
+
 > **NEVER_STOP 说明（模式二）**：当此字段为 `true` 时，执行 Agent **不得在遇到不确定性时停下来问"我该继续吗"**。
 > - 遇到模糊点 → 基于已有信息自己做合理判断，继续执行
 > - 遇到可选路径 → 选最符合任务目标的那条，继续执行
@@ -128,6 +144,137 @@ evidence_required:
   - verification_output_summary
   - known_risks
 ```
+
+### 标准 outbox
+
+执行 Agent 的 outbox 必须优先使用 `templates/outbox_v2_8.json` 结构。错误必须进入 `error_taxonomy`：
+
+```text
+model_error
+tool_permission_error
+missing_api_key
+timeout
+invalid_output_schema
+verification_failed
+allowed_files_violation
+human_input_required
+runtime_error
+unknown_error
+```
+
+### 默认派发入口
+
+主 Hermes 使用 Task Card `output_contract.dispatch.command` 派发任务。该命令会读取 inbox，
+选择 `execution_plan.primary_agent`，并通过 Hermes runtime `delegate_task(agent_id=...)`
+交给对应子 Agent 执行。派发时会注入 `templates/outbox_v2_8.json` 的必填字段和最小 JSON 示例，
+降低 malformed outbox 概率：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/dispatch-task.py --inbox <inbox_path>
+```
+
+### Post-Outbox Gate（v2.8 默认）
+
+子 Agent 写完 outbox 后，主 Hermes 必须使用 Task Card `output_contract.post_outbox_gate.command`
+中的 **单一命令** 执行自动验收分流，并将 gate record 写入
+`output_contract.post_outbox_gate.record_path`：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/run-task-gate.py \
+  --inbox <inbox_path> \
+  --outbox <outbox_path> \
+  --output <review_record_path> \
+  --event-log <team_events_jsonl> \
+  --task-index <team_tasks_index_jsonl> \
+  --summary \
+  --create-revision-inbox
+```
+
+`run-task-gate.py` 内部依次执行两步：
+1. **verify（结构校验）** — 检查 outbox schema、必需字段、changed_files 完整性（由 `verify-task.py` 完成）
+2. **review（语义审核）** — 检查任务目标覆盖、证据充分性、风险合理性（由 `review-task.py` 完成）
+3. **policy（分流策略）** — 将 gate decision 与 failed checks 映射为 `complete / auto_revision / manual_review / reject / switch_agent / blocked`
+
+输出三种结果之一：
+
+| result | 含义 | 后续动作 |
+|--------|------|----------|
+| `approved` | 全部通过（结构 + 语义） | 可直接合并 / 交付 |
+| `revision_needed` | 存在可自动修复的问题 | 自动生成下一轮 revision inbox，子 Agent 按返工 brief 修改 |
+| `rejected` | 硬失败（缺失证据、schema 违反等） | 返工重做，或标记 blocked / failed |
+
+> 底层仍然保留 `verify-task.py` 和 `review-task.py` 供手动分步调试，但日常交付必须使用
+> Task Card 自带的 `post_outbox_gate.command`，不得绕过 gate 直接交付子 Agent outbox。
+> 默认最多自动生成 2 轮 revision inbox；超过上限后转人工处理，避免无限返工。
+> 如需让 gate 在生成 revision inbox 后立刻派发，可显式追加 `--auto-dispatch-revision`。
+> 自动返工与自动派发必须同时通过 `gate-policy.py`；`allowed_files_check`、`must_avoid_respected` 等硬失败不会自动返工。
+
+### 状态查询
+
+任务状态由 `events.jsonl` 同步写入 `tasks/index.jsonl`。日常查询使用：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/task-status.py --project <project>
+```
+
+默认会折叠自动返工链路，显示类似 `approved via <task_id>_rev1` 的最终状态。
+调试原始父子任务事件时使用：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/task-status.py --project <project> --no-rollup
+```
+
+事件时间线：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/event-summary.py --project <project>
+```
+
+### Agent Execution Watchdog / Run Ledger
+
+外部 Agent 执行会写入：
+
+```text
+~/.claude/teams/<project>/runs/ledger.jsonl
+```
+
+查询最近执行：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/run-ledger.py --project <project>
+```
+
+查询 run 时间线：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/event-summary.py --project <project> --runs
+```
+
+Run ledger 会记录 `run_id`、`agent_id`、`duration_seconds`、`exit_code`、`classification`
+和 stdout/stderr tail。`task-status.py` 的 `RUN` 列会显示最近一次 run 分类，便于定位
+Claude / DeepSeek 卡死、超时、鉴权或权限问题。
+
+### 真实链路 Smoke
+
+修改 delegation、gate、policy 或外部 Agent 配置后，优先跑 `/tmp` 临时真实链路：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/smoke-real-chain.py --agent claude
+```
+
+可选 DeepSeek TUI：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/smoke-real-chain.py --agent deepseek-tui
+```
+
+先只检查任务包和派发命令：
+
+```bash
+~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/smoke-real-chain.py --agent claude --dry-run
+```
+
+Gate approved 后会生成 `commit_suggestion`（diff 摘要 + 建议 commit message），但不会自动提交。
 
 ---
 

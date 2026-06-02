@@ -25,6 +25,31 @@ agents:
 
 ## 排查流程
 
+### Step 0: 确认配置权威源
+
+工程源文件是：
+
+```text
+~/.hermes/hermes-agent/configs/managed_agents/agents.yaml
+```
+
+运行时镜像是：
+
+```text
+~/.hermes/config/agent-registry.json
+```
+
+配置仓库镜像是：
+
+```text
+~/.hermes/config/managed-agents.yaml
+```
+
+`agent-registry.json` 由 `agents.yaml` 生成。除非是在紧急恢复运行时状态，
+不要把结构性变更直接写进 `agent-registry.json`；否则下一次同步会覆盖。
+常规修改流程：改 `agents.yaml` → 运行
+`hermes-agent/scripts/sync_agent_registry.py` → 重启网关 → 用 doctor 验证。
+
 ### Step 1: 检查子Agent注册配置
 
 文件：`~/.hermes/config/agent-registry.json`
@@ -965,19 +990,26 @@ Managed agent preflight rejected delegation: Agent claude cannot handle risk R0
 - 先告诉用户「claude 被风险策略拦了，换 deepseek-tui」，然后立即执行
 - 换 agent 后还超时（如长编译），走第三步主会话兜底
 
-### 23. managed_persistence=false 导致每次 delegate 冷启动（Token 浪费）
+### 23. 不要把 browser.camofox.managed_persistence 当成子 Agent 热启动
 
-**问题**：`config.yaml` 中 `managed_persistence: false` 意味着每次 `delegate_task` 都 spawn 全新子 Agent 会话，重载完整 system prompt + skill 列表 + tool 定义。一次「内斯塔→Claude Code→内斯塔验收」链路 = 三次独立冷启动，每次 ~10-15K tokens 的 system prompt。
+**问题**：`config.yaml` 中现有的 `browser.camofox.managed_persistence`
+只控制 Camofox/浏览器 profile 持久化，不控制 `delegate_task` 的子
+Agent 生命周期。把它改成 `true` 不会减少子 Agent 冷启动 token。
 
-**诊断**：
+**验证**：
 ```bash
-grep "managed_persistence" ~/.hermes/config.yaml
-# false → 每次冷启动
+rg -n "managed_persistence" ~/.hermes/hermes-agent
+# 预期只命中 hermes_cli/config.py、tools/browser_camofox.py 和 browser 测试
 ```
 
-**修复**：改为 `true`（需确认 Hermes 版本支持 Managed Agents 持久化）。
+**真实现状**：`delegate_task` 在 `tools/delegate_tool.py` 的
+`_build_child_agent()` 中构造新的 `AIAgent`。子 Agent 热启动需要单独的
+child-agent reuse/session-cache 设计，不能通过现有 `managed_persistence`
+配置解决。
 
-**关联**：`hermes-system-diagnostics` skill 的「Token/成本效率审计」章节。
+**规则**：诊断 delegate 冷启动时看 `tools/delegate_tool.py` 生命周期、
+`delegation.child_timeout_seconds`、`max_concurrent_children` 和实际 token/latency；
+不要建议修改 `browser.camofox.managed_persistence`。
 
 ### 24. orchestrator_enabled + max_spawn_depth=1 = 死能力
 

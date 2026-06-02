@@ -1,0 +1,81 @@
+{
+  "schema_version": "2.8",
+  "task_id": "{project}_{YYYYMMDD}_{序号}",
+  "agent": "claude",
+  "created_at": "{ISO8601时间戳}",
+  "status": "created",
+  "task_type": "file_execution",
+  "goal": "一句话描述本次任务目标",
+  "allowed_files": [
+    "relative/or/absolute/path.ext"
+  ],
+  "acceptance_criteria": {
+    "auto_checkable": [
+      "changed files must be within allowed_files",
+      "outbox must contain all required fields"
+    ],
+    "human_review": [
+      "任务目标已完成",
+      "没有引入无关改动"
+    ],
+    "evidence_required": [
+      "changed_files",
+      "verification_commands",
+      "verification_output_summary",
+      "known_risks"
+    ]
+  },
+  "expected_output": {
+    "format": "json",
+    "required_fields": [
+      "schema_version",
+      "task_id",
+      "agent_id",
+      "status",
+      "summary",
+      "changed_files",
+      "changed_files_source",
+      "verification",
+      "evidence",
+      "known_risks",
+      "errors",
+      "error_taxonomy",
+      "needs_human_review"
+    ]
+  },
+  "safety": {
+    "allowed_paths": [
+      "."
+    ],
+    "denied_commands": [
+      "rm -rf",
+      "sudo",
+      "curl | sh",
+      "chmod -R",
+      "git push --force"
+    ]
+  },
+  "output_contract": {
+    "path": "~/.claude/teams/{project}/outbox/{task_id}_result.json",
+    "format": "json",
+    "schema": "templates/outbox_v2_8.json",
+    "dispatch": {
+      "required": true,
+      "runner": "~/.hermes/scripts/dispatch-task.py",
+      "command": "~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/dispatch-task.py --inbox ~/.claude/teams/{project}/inbox/{task_id}.json"
+    },
+    "post_outbox_gate": {
+      "required": true,
+      "runner": "~/.hermes/scripts/run-task-gate.py",
+      "policy_runner": "~/.hermes/scripts/gate-policy.py",
+      "policy_schema": "templates/gate_policy_v2_8.json",
+      "record_path": "~/.claude/teams/{project}/review/{task_id}_gate.json",
+      "command": "~/.hermes/hermes-agent/venv/bin/python ~/.hermes/scripts/run-task-gate.py --inbox ~/.claude/teams/{project}/inbox/{task_id}.json --outbox ~/.claude/teams/{project}/outbox/{task_id}_result.json --output ~/.claude/teams/{project}/review/{task_id}_gate.json --event-log ~/.claude/teams/{project}/events.jsonl --task-index ~/.claude/teams/{project}/tasks/index.jsonl --summary --create-revision-inbox",
+      "decisions": [
+        "approved",
+        "revision_needed",
+        "rejected"
+      ]
+    }
+  }
+}

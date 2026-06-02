@@ -33,17 +33,31 @@ if [ -z "$HERMES_AGENT_DIR" ]; then
   exit 1
 fi
 
-# ── 2. 部署 managed_agents 配置 ────────────────────────────────────────────
-AGENTS_YAML_SRC="$HERMES_CONFIG_HOME/config/managed-agents.yaml"
-AGENTS_YAML_DST="$HERMES_AGENT_DIR/configs/managed_agents/agents.yaml"
+# ── 2. 校验 managed_agents 配置 ────────────────────────────────────────────
+# The detailed engineering source of truth lives in Hermes Agent. The config
+# repo keeps config/managed-agents.yaml as a deployable mirror only. Do not let
+# an older mirror overwrite the richer source file.
+AGENTS_YAML_MIRROR="$HERMES_CONFIG_HOME/config/managed-agents.yaml"
+AGENTS_YAML_SRC="$HERMES_AGENT_DIR/configs/managed_agents/agents.yaml"
 
 if [ -f "$AGENTS_YAML_SRC" ]; then
-  mkdir -p "$(dirname "$AGENTS_YAML_DST")"
-  cp "$AGENTS_YAML_SRC" "$AGENTS_YAML_DST"
-  echo "==> managed_agents 配置已部署: $AGENTS_YAML_DST"
+  mkdir -p "$(dirname "$AGENTS_YAML_MIRROR")"
+  if [ ! -f "$AGENTS_YAML_MIRROR" ] || ! cmp -s "$AGENTS_YAML_SRC" "$AGENTS_YAML_MIRROR"; then
+    cp "$AGENTS_YAML_SRC" "$AGENTS_YAML_MIRROR"
+    echo "==> managed_agents 镜像已从源码刷新: $AGENTS_YAML_MIRROR"
+  else
+    echo "==> managed_agents 配置已同步"
+  fi
 else
-  echo "✗ 缺少 config/managed-agents.yaml，部署中止"
-  exit 1
+  if [ -f "$AGENTS_YAML_MIRROR" ]; then
+    mkdir -p "$(dirname "$AGENTS_YAML_SRC")"
+    cp "$AGENTS_YAML_MIRROR" "$AGENTS_YAML_SRC"
+    echo "==> managed_agents 配置已部署: $AGENTS_YAML_SRC"
+  else
+    echo "✗ 缺少 managed agents 配置，部署中止"
+    echo "  需要 $AGENTS_YAML_SRC 或 $AGENTS_YAML_MIRROR"
+    exit 1
+  fi
 fi
 
 # ── 3. 检查核心配置文件 ───────────────────────────────────────────────────

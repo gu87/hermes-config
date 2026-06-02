@@ -1,0 +1,34 @@
+{
+  "schema_version": "2.8",
+  "task_id": "{project}_{YYYYMMDD}_{序号}",
+  "agent_id": "claude",
+  "status": "waiting_for_verification",
+  "summary": "一句话说明实际完成内容。",
+  "changed_files": [
+    "relative/or/absolute/path.ext"
+  ],
+  "changed_files_source": "git_diff",
+  "verification": {
+    "status": "ready",
+    "commands": [
+      "python -m py_compile scripts/verify-task.py"
+    ],
+    "output_summary": "命令通过；无语法错误。"
+  },
+  "evidence": {
+    "changed_files": [
+      "relative/or/absolute/path.ext"
+    ],
+    "verification_commands": [
+      "python -m py_compile scripts/verify-task.py"
+    ],
+    "verification_output_summary": "命令通过；无语法错误。",
+    "known_risks": [],
+    "tool_trace": []
+  },
+  "known_risks": [],
+  "errors": [],
+  "error_taxonomy": [],
+  "needs_human_review": false,
+  "notes": []
+}

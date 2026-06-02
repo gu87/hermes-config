@@ -40,8 +40,29 @@ skills/**/workflows/
 !templates/
 !templates/**/
 !templates/**/*.md
+!templates/gate_policy_v2_8.json
+!templates/inbox_v2_8.json
+!templates/outbox_v2_8.json
+!templates/review_v2_8.json
 !.tours/
 !.tours/.gitkeep
+
+# Task verification runtime
+!scripts/
+!scripts/compile-task.py
+!scripts/dispatch-task.py
+!scripts/gate-policy.py
+!scripts/review-task.py
+!scripts/run-ledger.py
+!scripts/run-task-gate.py
+!scripts/opencode-agent.py
+!scripts/task-status.py
+!scripts/verify-task.py
+
+# Tests for local collaboration harness scripts
+!tests/
+!tests/test_opencode_agent.py
+!tests/test_run_ledger_default_paths.py
 
 # Configuration layer — the deployment skeleton
 !config.yaml

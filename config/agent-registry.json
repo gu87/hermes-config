@@ -67,6 +67,9 @@
           "hermes-multi-agent-research",
           "hermes-gateway-debug",
           "codebase-inspection",
+          "codebase-scout",
+          "context-skill-audit",
+          "hermes-orchestration-closeout",
           "github-repo-risk-assessment",
           "humanizer-zh"
         ]
@@ -102,7 +105,7 @@
       "id": "claude",
       "type": "lead_implementer",
       "display_name": "Claude 主程执行官",
-      "soul": "你是 Claude 主程执行官，负责外部 Claude Code CLI 执行器；后端由 CC Switch 控制。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "soul": "你是 Claude 主程执行官，负责外部 Claude Code CLI 执行器；标准实现默认 Sonnet，复杂/高风险实现再升级 Opus。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
       "capabilities": [
         "code_edit",
         "test_run",
@@ -138,11 +141,12 @@
         "required_mcp_servers": [
           "codegraph"
         ],
-        "model_ref": "claude_opus",
+        "model_ref": "claude_sonnet",
         "model_strategy": {
           "mode": "external",
-          "primary": "claude_opus",
+          "primary": "claude_sonnet",
           "chain": [
+            "claude_sonnet",
             "claude_opus"
           ],
           "fallback_on": []
@@ -152,6 +156,8 @@
           "github-repo-management",
           "github-issues",
           "codebase-inspection",
+          "codebase-scout",
+          "systematic-debugging",
           "python-debugpy",
           "node-inspect-debugger",
           "nextjs-standalone-deployment",
@@ -170,12 +176,13 @@
         "代码执行官",
         "claude"
       ],
-      "role_summary": "外部 Claude Code CLI 执行器；后端由 CC Switch 控制。",
-      "model_ref": "claude_opus",
+      "role_summary": "外部 Claude Code CLI 执行器；标准实现默认 Sonnet，复杂/高风险实现再升级 Opus。",
+      "model_ref": "claude_sonnet",
       "model_strategy": {
         "mode": "external",
-        "primary": "claude_opus",
+        "primary": "claude_sonnet",
         "chain": [
+          "claude_sonnet",
           "claude_opus"
         ],
         "fallback_on": []
@@ -217,15 +224,15 @@
         "isolation": "shared",
         "allow_background": false,
         "required_mcp_servers": [],
-        "model_ref": "opencode_go_deepseek_pro",
+        "model_ref": "opencode_go_deepseek_flash",
         "model_strategy": {
           "mode": "fallback",
-          "primary": "opencode_go_deepseek_pro",
+          "primary": "opencode_go_deepseek_flash",
           "chain": [
-            "opencode_go_deepseek_pro",
             "opencode_go_deepseek_flash",
-            "deepseek_pro",
-            "deepseek_flash"
+            "opencode_go_deepseek_pro",
+            "deepseek_flash",
+            "deepseek_pro"
           ],
           "fallback_on": [
             "quota_exceeded",
@@ -237,13 +244,16 @@
         },
         "skills": [
           "codebase-inspection",
+          "codebase-scout",
+          "systematic-debugging",
           "spike",
           "python-debugpy",
           "node-inspect-debugger",
           "debugging-hermes-tui-commands",
           "github-issues",
           "anysearch-lite"
-        ]
+        ],
+        "runtime": "deepseek_tui_cli"
       },
       "aliases": [
         "DeepSeek 低成本快工",
@@ -253,15 +263,15 @@
         "deepseek"
       ],
       "role_summary": "小改、小测试、低风险机械执行；不负责复杂重构和高风险操作。外部搜索遵循 DeepSeek Worker Search Policy：本地优先，必要时用 anysearch-lite，已知 URL 用 scrapling-fetch。",
-      "model_ref": "opencode_go_deepseek_pro",
+      "model_ref": "opencode_go_deepseek_flash",
       "model_strategy": {
         "mode": "fallback",
-        "primary": "opencode_go_deepseek_pro",
+        "primary": "opencode_go_deepseek_flash",
         "chain": [
-          "opencode_go_deepseek_pro",
           "opencode_go_deepseek_flash",
-          "deepseek_pro",
-          "deepseek_flash"
+          "opencode_go_deepseek_pro",
+          "deepseek_flash",
+          "deepseek_pro"
         ],
         "fallback_on": [
           "quota_exceeded",
@@ -270,7 +280,76 @@
           "server_error",
           "empty_final_content"
         ]
-      }
+      },
+      "runtime": "deepseek_tui_cli"
+    },
+    "opencode": {
+      "id": "opencode",
+      "type": "external_collaboration_worker",
+      "display_name": "OpenCode 协作执行员",
+      "soul": "你是 OpenCode 协作执行员，负责外部 OpenCode CLI 适配器；用于窄范围代码复核、廉价二审、失败样本采集和协作链路 smoke，不进入主执行 fallback。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "capabilities": [
+        "code_review",
+        "external_quick_check",
+        "bug_reproduction",
+        "collaboration_smoke"
+      ],
+      "risk_allowed": [
+        "R0",
+        "R1",
+        "R2"
+      ],
+      "subagent_profile": {
+        "model": "default",
+        "toolsets": [
+          "file",
+          "terminal"
+        ],
+        "blocked_tools": [
+          "delegate_task",
+          "send_message",
+          "memory",
+          "clarify"
+        ],
+        "permission_mode": "ask",
+        "isolation": "shared",
+        "allow_background": false,
+        "required_mcp_servers": [],
+        "model_ref": "opencode_go_deepseek_flash",
+        "model_strategy": {
+          "mode": "external",
+          "primary": "opencode_go_deepseek_flash",
+          "chain": [
+            "opencode_go_deepseek_flash",
+            "opencode_go_deepseek_pro"
+          ],
+          "fallback_on": []
+        },
+        "skills": [
+          "codebase-inspection",
+          "github-code-review",
+          "systematic-debugging"
+        ],
+        "runtime": "opencode_cli"
+      },
+      "aliases": [
+        "OpenCode 协作执行员",
+        "OpenCode",
+        "opencode",
+        "opencode-go"
+      ],
+      "role_summary": "外部 OpenCode CLI 适配器；用于窄范围代码复核、廉价二审、失败样本采集和协作链路 smoke，不进入主执行 fallback。",
+      "model_ref": "opencode_go_deepseek_flash",
+      "model_strategy": {
+        "mode": "external",
+        "primary": "opencode_go_deepseek_flash",
+        "chain": [
+          "opencode_go_deepseek_flash",
+          "opencode_go_deepseek_pro"
+        ],
+        "fallback_on": []
+      },
+      "runtime": "opencode_cli"
     },
     "codex": {
       "id": "codex",
@@ -325,7 +404,10 @@
           "codex-superpowers",
           "github-code-review",
           "github-repo-risk-assessment",
-          "codebase-inspection"
+          "codebase-inspection",
+          "codebase-scout",
+          "context-skill-audit",
+          "hermes-orchestration-closeout"
         ],
         "runtime": "codex_cli"
       },
@@ -384,14 +466,14 @@
         "isolation": "shared",
         "allow_background": false,
         "required_mcp_servers": [],
-        "model_ref": "opencode_go_qwen37_max",
+        "model_ref": "opencode_go_kimi26",
         "model_strategy": {
           "mode": "fallback",
-          "primary": "opencode_go_qwen37_max",
+          "primary": "opencode_go_kimi26",
           "chain": [
+            "opencode_go_kimi26",
             "opencode_go_qwen37_max",
             "opencode_go_qwen36",
-            "opencode_go_kimi26",
             "deepseek_flash"
           ],
           "fallback_on": [
@@ -414,14 +496,14 @@
         "intelligence"
       ],
       "role_summary": "调研、竞品、资料收集、信息核验。",
-      "model_ref": "opencode_go_qwen37_max",
+      "model_ref": "opencode_go_kimi26",
       "model_strategy": {
         "mode": "fallback",
-        "primary": "opencode_go_qwen37_max",
+        "primary": "opencode_go_kimi26",
         "chain": [
+          "opencode_go_kimi26",
           "opencode_go_qwen37_max",
           "opencode_go_qwen36",
-          "opencode_go_kimi26",
           "deepseek_flash"
         ],
         "fallback_on": [
@@ -624,7 +706,7 @@
       "id": "agent-tars",
       "type": "desktop_operator",
       "display_name": "TARS 桌面操作员",
-      "soul": "你是 TARS 桌面操作员，负责桌面、浏览器 GUI、截图、视觉验证。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。",
+      "soul": "你是 TARS 桌面操作员，负责桌面、浏览器 GUI、截图、视觉验证。请遵守该 Agent 的工具权限、风险等级和只读/执行边界。\n\n默认只允许：截图、页面观察、浏览器非破坏性导航、GUI 状态验证、视觉检查。\n\n严格禁止（未经用户明确确认不得执行）：\n- 删除文件、修改系统设置\n- 提交表单、发送消息\n- 付款或任何购买操作\n- 输入密码、token、cookie、API key 等凭证\n- 任何不可逆的破坏性 GUI 操作",
       "capabilities": [
         "desktop_control",
         "app_operation",
@@ -770,7 +852,9 @@
         },
         "skills": [
           "codex-superpowers",
-          "github-code-review"
+          "github-code-review",
+          "context-skill-audit",
+          "hermes-orchestration-closeout"
         ]
       },
       "aliases": [

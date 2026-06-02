@@ -118,6 +118,15 @@ cat ~/.hermes/gateway_state.json
 
 ## 常见坑
 
+### Scrapling 抓 GitHub 页面返回导航栏垃圾
+**症状：** 用 `scrapling_fetch` 或 `mcp_scrapling_fetch_s_fetch_page` 抓 GitHub 仓库页面（如 `github.com/owner/repo`），返回内容只有 13-29% 是 README 正文，其余全是 GitHub 导航栏、页脚、Sign in 提示等页面框架。
+**原因：** GitHub 页面是动态渲染的 SPA，请求返回的是完整 HTML 页面，导航/sidebar/footer 占了大量字符。
+**正确做法：** 直接用 raw.githubusercontent.com 取 README 源文件：
+```bash
+curl -sL 'https://raw.githubusercontent.com/{owner}/{repo}/main/README.md'
+```
+**验证：** 对比两种方式返回的内容量——raw 方式 README 正文占比接近 100%，scrapling 方式 README 正文占比 <30%。
+
 ### npm/pnpm install 在国内超时
 **症状：** `pnpm install` 或 `npm install` 卡在下载阶段，30s~300s 后报 timeout。
 **原因：** 官方 npm registry (registry.npmjs.org) 在国内访问极慢。

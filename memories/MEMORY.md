@@ -25,3 +25,5 @@ Claude agent 委托路径与本地 Claude Code Pro 独立：Hermes 委托通过�
 任务-工具匹配规则：收到内容转换/生成类任务时，先检查可用 skill 或专用服务；Markdown/内容转样式化 HTML 优先用 html-anything API（14732），不手写 HTML。
 §
 LibreOffice CLI automation 已部署，归 TARS 桌面自动化域；用 `python3.11 -m cli_anything.libreoffice`，详情看 skill `libreoffice-cli`。
+§
+verify-task.py 对 outbox.status 有双层校验（TASK_STATUSES vs VALID_OUTBOX_STATUSES），交集仅 {failed, blocked}。标准格式 outbox（含 agent_id+next_action）无法用 success/completed 通过。非标准格式（无 next_action）可绕过。详细设计分析见 docs/adr/ADR-verify-task-dual-status-validation.md，已在 verification-loop skill 的 pitfall 节引用。当前判定为设计特性非 bug，不在 v2.8.1 修改，v2.8.2 计划降级为 warning。

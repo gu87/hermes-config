@@ -1,0 +1,60 @@
+{
+  "schema_version": "2.8",
+  "description": "Hermes v2.8 Gate Policy: maps gate decisions and failed checks to next actions.",
+  "actions": [
+    "complete",
+    "auto_revision",
+    "manual_review",
+    "reject",
+    "switch_agent",
+    "blocked"
+  ],
+  "auto_revision_checks": [
+    "evidence_quality",
+    "changed_files_source",
+    "invalid_output_schema",
+    "required_fields",
+    "must_keep_reflected",
+    "must_change_fulfilled",
+    "success_criteria_mentioned"
+  ],
+  "hard_stop_checks": [
+    "allowed_files_check",
+    "must_avoid_respected"
+  ],
+  "timeout_error_codes": [
+    "timeout"
+  ],
+  "rules": [
+    {
+      "match": "decision == approved",
+      "action": "complete",
+      "auto_revision_allowed": false,
+      "auto_dispatch_allowed": false
+    },
+    {
+      "match": "failed check in evidence_quality, changed_files_source, invalid_output_schema, must_keep_reflected, must_change_fulfilled, success_criteria_mentioned",
+      "action": "auto_revision",
+      "auto_revision_allowed": true,
+      "auto_dispatch_allowed": true
+    },
+    {
+      "match": "failed check in allowed_files_check, must_avoid_respected",
+      "action": "reject",
+      "auto_revision_allowed": false,
+      "auto_dispatch_allowed": false
+    },
+    {
+      "match": "error taxonomy contains timeout",
+      "action": "switch_agent",
+      "auto_revision_allowed": false,
+      "auto_dispatch_allowed": false
+    },
+    {
+      "match": "revision limit reached",
+      "action": "manual_review",
+      "auto_revision_allowed": false,
+      "auto_dispatch_allowed": false
+    }
+  ]
+}

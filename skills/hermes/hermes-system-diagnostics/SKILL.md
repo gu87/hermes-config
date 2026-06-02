@@ -36,7 +36,17 @@ python3 /Users/gu/.hermes/bin/hermes-system-doctor.py
 - `verify`: 可复现的验证命令
 - 当前时间戳
 
-如果没有实时验证，只能写成 `STALE` 或“历史日志信号”，不能写成当前故障。
+如果不做实时验证，只能写成 `STALE` 或"历史日志信号"，不能写成当前故障。
+
+### 可选增强：CodeGraph 架构图谱
+
+当需要理解系统代码级架构时，可先对 `~/.hermes` 运行 CodeGraph 索引：
+
+```bash
+cd /Users/gu/.hermes && codegraph init && codegraph index
+```
+
+然后用 `codegraph_context` / `codegraph_explore` 生成 Agent 路由、任务管道、策略决策等维度的架构图谱。详见 `references/codegraph-hermes-self-inspection.md`。
 
 ### 权威源固定表
 
@@ -263,8 +273,8 @@ skill_view(name) → 读 SKILL.md frontmatter 的 agents: 声明
 # 1. delegation 模型分级 — 是否所有子Agent用同一个模型？
 grep -A 3 "delegation:" ~/.hermes/config.yaml | grep -E "model|provider"
 
-# 2. managed_persistence — 子Agent是否持久化？（false = 每次冷启动）
-grep "managed_persistence" ~/.hermes/config.yaml
+# 2. 子Agent 生命周期 — 当前是否存在真正的热启动/复用机制？
+rg -n "_build_child_agent|managed_persistence" ~/.hermes/hermes-agent/tools/delegate_tool.py ~/.hermes/hermes-agent/tools/browser_camofox.py
 
 # 3. orchestrator + spawn_depth — 是否存在死能力？
 grep -E "orchestrator|max_spawn_depth" ~/.hermes/config.yaml
@@ -283,7 +293,8 @@ ls -la ~/.hermes/config/agent-registry.json 2>/dev/null || echo "MISSING"
 
 | 发现 | 影响 | 严重度 |
 |------|------|--------|
-| `managed_persistence: false` | 每次 delegate 冷启动子Agent，重载 system prompt + tools | 高 — 每次派活多烧 ~5-15K tokens |
+| 把 `browser.camofox.managed_persistence` 当成子Agent热启动 | 误改浏览器 profile 持久化，不会降低 delegate 冷启动成本 | 高 — 错误修复路径 |
+| `delegate_task` 每次构造新 `AIAgent` | 子Agent重载 system prompt + tools，热启动需单独设计 | 高 — 每次派活多烧 token |
 | delegation 所有子Agent统一模型 | 调研/推理任务和机械小改用同一模型，贵的用不起便宜的干不好 | 中 |
 | `orchestrator_enabled: true` + `max_spawn_depth: 1` | orchestrator 永远无法派活，死能力增加判断分支 | 低 |
 | Memory 超限 (>3000 chars) | 每次对话都硬塞超限内容进 system prompt | 中 |
@@ -292,7 +303,8 @@ ls -la ~/.hermes/config/agent-registry.json 2>/dev/null || echo "MISSING"
 
 ### 修复指引
 
-- **managed_persistence** → 改为 `true`（需确认 Hermes 版本支持）
+- **delegate 冷启动** → 不改 `browser.camofox.managed_persistence`；先测
+  `delegate_task` latency/token，再设计 child-agent reuse/session-cache
 - **模型不分级** → 为不同 Agent 类型配不同 delegation 模型（调研用 Pro，机械用 Flash）
 - **orchestrator 死能力** → 要么关掉 `orchestrator_enabled: false`，要么 `max_spawn_depth: 2`
 - **Memory 超限** → 按 `hermes-knowledge-architecture` 技能做内存瘦身，把长内容迁到 Obsidian
@@ -384,7 +396,8 @@ git clone https://github.com/gu87/hermes-config ~/.hermes
 # 3. 运行部署脚本
 cd ~/.hermes && bash bin/setup.sh
 # → 检测 hermes-agent 安装位置
-# → 复制 config/managed-agents.yaml 到 hermes-agent/configs/managed_agents/agents.yaml
+# → 以 hermes-agent/configs/managed_agents/agents.yaml 为工程源
+# → config/managed-agents.yaml 只是配置仓库镜像，不要用旧镜像覆盖源文件
 # → 创建 .env 模板
 
 # 4. 填写 API 密钥
@@ -459,6 +472,9 @@ hermes gateway start
 - **只给有 terminal 的 Agent**：只读 Agent 加 terminal 会破坏角色边界，宁可少分配
 - **生产模式优化**：dev 模式进程多、内存高，静态构建 + python http.server 可节省 74% 内存。详见 `references/service-production-mode-optimization.md`
 - `references/system-snapshot-format-2026-05-28.md` — 系统快照标准 6 维格式（Agent/Token/模型/MCP/资源/问题），含飞书友好输出模板
+- `references/codegraph-hermes-self-inspection.md` — 用 CodeGraph 索引 `~/.hermes` 脚本层生成多 Agent 架构图谱：分析管线、架构发现速查表、管道/路由/策略矩阵
+- `references/tool-search-feature.md` — 上游 Tool Search 特性（渐进式工具披露，3 桥接工具），当前分支未包含，下次 `hermes update` 自然带上
+- `references/v2.8.1-stabilization-workflow.md` — 系统稳定化 6 阶段工作流：配置审计→漂移修复→代码改进→安全边界→Git 分类
 - `references/model-config-field-map.md` — Gu 的机器实际三层配置映射表，含已验证别名和诊断命令
 - `references/token-efficiency-audit-2026-05-25.md` — 2026-05-25 架构自检实录：配置项发现、浪费模式、修复建议
 - `references/system-audit-2026-05-25.md` — 2026-05-25 全量系统自检实录：5 个关键发现、修复方法、最终状态快照

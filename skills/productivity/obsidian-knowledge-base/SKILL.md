@@ -194,6 +194,7 @@ ln -s "/Users/gu/Library/Mobile Documents/iCloud~md~obsidian/Documents/个人知
 ### 支持文件
 
 - `references/openchronicle-memory-format.md` — OpenChronicle 记忆文件格式详情，含文件前缀、entry 结构、supersede 语义
+- `references/tool-evaluation-workflow.md` — GitHub 项目评估工作流，含"研究一下这个项目"的完整 SOP 和 Obsidian 存档模板
 - `references/plugin-research.md` — Obsidian 插件调研工作流 + 翻译插件对比表。用户问"有没有类似X的插件"时，参考此文件做调研和推荐
 
 ## 插件调研工作流

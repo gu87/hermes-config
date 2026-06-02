@@ -219,6 +219,7 @@ def _registry_profile(agent: dict[str, Any]) -> dict[str, Any]:
 def check_agents_and_models() -> list[Check]:
     registry_path = ROOT / "config" / "agent-registry.json"
     agents_path = AGENT_ROOT / "configs" / "managed_agents" / "agents.yaml"
+    mirror_path = ROOT / "config" / "managed-agents.yaml"
     models_path = ROOT / "config" / "models.yaml"
     if not registry_path.exists() or not agents_path.exists() or not models_path.exists():
         return [
@@ -240,6 +241,40 @@ def check_agents_and_models() -> list[Check]:
     models = models_yaml.get("models") if isinstance(models_yaml.get("models"), dict) else {}
 
     checks: list[Check] = []
+    if mirror_path.exists():
+        mirror_yaml = _load_yaml(mirror_path)
+        mirror_agents_list = mirror_yaml.get("agents") if isinstance(mirror_yaml.get("agents"), list) else []
+        mirror_agents = {str(a.get("agent_id")): a for a in mirror_agents_list if isinstance(a, dict)}
+        missing_in_mirror = sorted(set(yaml_agents) - set(mirror_agents))
+        extra_in_mirror = sorted(set(mirror_agents) - set(yaml_agents))
+        checks.append(
+            Check(
+                "Managed agents mirror",
+                "OK" if agents_yaml == mirror_yaml else "FAIL",
+                (
+                    "config/managed-agents.yaml mirrors agents.yaml"
+                    if agents_yaml == mirror_yaml
+                    else (
+                        f"mirror drift: source={len(yaml_agents)} agents; "
+                        f"mirror={len(mirror_agents)} agents"
+                        + (f"; missing_in_mirror={missing_in_mirror}" if missing_in_mirror else "")
+                        + (f"; extra_in_mirror={extra_in_mirror}" if extra_in_mirror else "")
+                    )
+                ),
+                f"{agents_path} and {mirror_path}",
+                "cmp hermes-agent/configs/managed_agents/agents.yaml config/managed-agents.yaml",
+            )
+        )
+    else:
+        checks.append(
+            Check(
+                "Managed agents mirror",
+                "WARN",
+                "config/managed-agents.yaml mirror is missing; runtime source still exists",
+                f"{agents_path} and {mirror_path}",
+                "cp hermes-agent/configs/managed_agents/agents.yaml config/managed-agents.yaml",
+            )
+        )
     missing_in_yaml = sorted(set(registry_agents) - set(yaml_agents))
     missing_in_registry = sorted(set(yaml_agents) - set(registry_agents))
     checks.append(
