@@ -118,6 +118,23 @@ cat ~/.hermes/gateway_state.json
 
 ## 常见坑
 
+### GitHub API (`api.github.com`) curl 在国内超时
+**症状：** `curl -s "https://api.github.com/repos/{owner}/{repo}"` 等命令 15-30s 后报 `Connection timed out` 或被 BLOCKED。terminal 和 browser 工具均可能超时。
+**原因：** 国内网络环境直连 GitHub API 不稳定，TCP 握手经常失败。
+**正确做法——多通道并行回退：**
+
+| 需要的信息 | 优选通道 | 命令/工具 |
+|-----------|---------|----------|
+| README / 源码 / 配置文件 | `raw.githubusercontent.com` | `curl -sL "https://raw.githubusercontent.com/{o}/{r}/main/README.md"` |
+| Stars / Forks / 语言占比 / Topics | `mcp_anysearch_extract` | 直接抓 `https://github.com/{owner}/{repo}` 页面 |
+| 仓库发现 / 基本信息确认 | `mcp_anysearch_search` | query: `"{owner} {repo} github repository"` |
+| Commits 历史 | `mcp_anysearch_extract` | GitHub 页面本身含最近 commit 信息 |
+| 官方文档 | `mcp_anysearch_extract` | 抓项目文档站（如 `goose-docs.ai`） |
+| Issues | 次选方案：看 GitHub 页面本身 | 页面侧栏含 Open Issues 数量 |
+
+**验证：** 如果 `curl api.github.com` 连续 2 次超时，不要重试，直接切换到上述多通道策略。这些通道在本会话已实战验证可恢复约 90%+ 的仓库调研数据。
+**注意：** 这不是 "api.github.com 永远不可用"——这只是网络条件差时的回退策略。网络恢复后优先用 API（更结构化）。
+
 ### Scrapling 抓 GitHub 页面返回导航栏垃圾
 **症状：** 用 `scrapling_fetch` 或 `mcp_scrapling_fetch_s_fetch_page` 抓 GitHub 仓库页面（如 `github.com/owner/repo`），返回内容只有 13-29% 是 README 正文，其余全是 GitHub 导航栏、页脚、Sign in 提示等页面框架。
 **原因：** GitHub 页面是动态渲染的 SPA，请求返回的是完整 HTML 页面，导航/sidebar/footer 占了大量字符。

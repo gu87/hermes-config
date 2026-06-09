@@ -13,71 +13,29 @@ Hermes has a built-in cron scheduler. Jobs are stored in `~/.hermes/cron/jobs.js
 
 ## The `cronjob` Tool — Critical Pitfalls
 
-### ⚠️ PITFALL #1: `cronjob(action='update')` SILENTLY OVERWRITES `prompt`
+### ⚠️ PITFALL #1: `cronjob(action='update')` 更新 prompt 后必须验证
 
-The `cronjob` tool's `update` action requires **BOTH** `job_id` AND a new `prompt` string. If you call it without providing the original prompt, it will **overwrite it** with whatever you pass.
+`cronjob(action='update', job_id='...', prompt='...')` 是正确的 prompt 修改方法（不要用 sed/crontab -e 手工改 JSON）。但**更新后务必验证**，因为存在两个静默失败场景：
 
-**Bad (will destroy the prompt):**
-```
-cronjob(action='update', job_id='16a6b3e04d52')
-# → prompt becomes '' or whatever default
-```
+1. **Gateway 重启回滚**：config/cron 变更后 Gateway 重启检测到 YAML 损坏 → 自动回滚 → prompt 丢失
+2. **手动编辑 JSON 未持久化**：`sed`/`crontab -e` 改 JSON 可能在 Gateway 重启时被覆盖
 
-**Good — always read the full job before updating:**
-```python
-# 1. Read the jobs file directly
-read_file(path='~/.hermes/cron/jobs.json')
+**验证三步**：
 
-# 2. Find the job by ID, extract its prompt
-
-# 3. Update with prompt included
-cronjob(action='update', job_id='16a6b3e04d52', prompt='<original prompt content>')
-```
-
-**SAFEST approach: Use `patch` on the JSON file directly, not the cronjob tool.**
 ```bash
-# Read the file
-read_file(path='~/.hermes/cron/jobs.json')
+# Step 1: 查看 cronjob list，确认 prompt_preview 包含新内容
+cronjob(action='list')
 
-# Patch just the field you need to change
-# (prompt stays untouched this way)
-patch(old_string='old field value', new_string='new field value', path='~/.hermes/cron/jobs.json')
+# Step 2: 立即手动跑一次（不等定时触发）
+cronjob(action='run', job_id='xxx')
+
+# Step 3: 用 session_search 查 actual cron session，看 run 的时候用了什么 prompt
+session_search(query="cron_job_id_xxx", limit=1, sort="newest")
+# → 检查 bookend_start 的第一条 user message 是否包含新 prompt 的搜索结果
+# → 如果还是旧 prompt（如"使用 web_search 和 Playwright"），说明更新未生效
 ```
 
-### Recovering an Overwritten Cron Prompt
-
-If you accidentally overwrite a cron job's prompt (e.g., called `cronjob(action='update')` without the original prompt):
-
-1. **Check the JSON file immediately** — if you're lucky, only the session's in-memory copy was modified, and the file still has the original (only applies if cronjob tool differs from direct file write):
-   ```bash
-   # Read the jobs file
-   cat ~/.hermes/cron/jobs.json | python3 -c "import sys,json; jobs=json.load(sys.stdin)['jobs']; [print(f'{j[\"id\"]}: {j.get(\"prompt\",\"\")[:100]}') for j in jobs]"
-   ```
-
-2. **If already overwritten in the file**, reconstruct from session history:
-   ```bash
-   # Search session history by cron job name or related keywords
-   session_search(query="zhipuai-coding-plan-grab cron 智谱")
-   # Or search the raw SQLite database
-   sqlite3 ~/.hermes/state.db "SELECT content FROM messages WHERE content LIKE '%keyword%'"
-   ```
-
-3. **If unrecoverable from history**, reconstruct from context:
-   - Check the standalone script (if any) at `~/<script_name>.py`
-   - Check the cron job's `enabled_toolsets` to infer what tools it needs
-   - Check `origin` field to know where to deliver output
-   - Rebuild based on job name and schedule
-
-4. **Safe update after recovery:**
-   ```bash
-   # Use patch on the JSON file directly (NOT the cronjob tool)
-   # Replace the prompt field
-   patch(new_string='"job_id": "xxx",\n  "prompt": "your recovered prompt",', old_string='"job_id": "xxx",\n  "prompt": "placeholder",', path='~/.hermes/cron/jobs.json')
-   ```
-   
-   Or re-write the entire job entry in the JSON file with `write_file` or direct editing.
-
-**Prevention: Never use `cronjob(action='update')` without explicitly preparing the full prompt first.** Always read `~/.hermes/cron/jobs.json`, extract the current prompt, and pass it back.
+**为什么 session_search 比 prompt_preview 更可靠**：prompt_preview 只显示截断的前几十字，而 session_search 的 bookend_start 包含 cron 实际收到的完整 system prompt，能精确判断搜索工具指令是否更新。
 
 ### ⚠️ PITFALL #2: `cronjob(action='update')` ALWAYS REQUIRES A `prompt` PARAMETER
 
@@ -139,7 +97,47 @@ curl -s http://localhost:9222/json/version
 
 Note: Regular Google Chrome works fine — Chrome for Testing is NOT required.
 
-## Job Storage & Direct Access
+## 二点五、Cron 任务工具约束
+
+Cron 任务的工具调用由两件事共同决定：**prompt 中写了什么** + **config.yaml 中加载了什么 MCP 工具**。两者独立，且都可能出问题。
+
+### 2.5.1 Prompt 中的搜索工具约束
+
+⚠️ **已发生的故障**（2026-06-08）：世界杯营销日报 prompt 写「使用 web_search 和 Playwright 浏览器抓取」。模型在执行搜索时调用了 `browser_navigate` 打开虎扑等页面，Chrome 被拉起后不自动关闭，在 8GB 内存环境中产生显著资源占用。
+
+**当前推荐工具**（2026-06-08 更新）：已切换到 **AnySearch MCP**（`mcp_anysearch_search` + `mcp_anysearch_extract`），不再依赖 Playwright/Chrome。prompt 中明确列出可用工具：
+
+```
+## 搜索工具
+使用 AnySearch MCP 工具进行搜索和内容提取：
+- **mcp_anysearch_search** — 搜索关键词，返回结果摘要
+- **mcp_anysearch_extract** — 提取指定 URL 的完整文章内容
+- 不依赖 Playwright、Chrome、web_search
+```
+
+**规则**：纯搜索+抓取的 cron 任务，prompt 中明确列出「用哪些、不用哪些」，禁止写「浏览器」「Playwright」「Chrome」。
+
+### 2.5.2 Provider 切换 ≠ MCP 工具切换
+
+**⚠️ 已发生的故障**（2026-06-08）：将 cron 任务的 model provider 从 deepseek 切到 opencode-go，但 `config.yaml` 中的 minimax MCP server 仍 `enabled: true`。`mcp_minimax_web_search` 继续被加载，模型仍然可以调用它。
+
+**原理**：MCP 工具由 `config.yaml mcp_servers` 段加载，与模型 provider 独立。切换 provider **不自动禁用旧 MCP 工具**。
+
+**迁移检查清单**：
+
+```
+□ 1. 更新 cron 任务 model 字段（per-job model override）
+□ 2. 检查 config.yaml mcp_servers 段：旧 provider 的 MCP 是否还 enabled？
+   → 如 minimax、volcengine 等
+   → 不再使用的设 enabled: false
+□ 3. 验证：新 provider + 旧 MCP 不会组合出预期外调用
+   → 手动 rerun 一次确认搜索/抓取工具调用链正常
+   → 检查 ps aux 确认无 Chrome 残留进程
+```
+
+详细案例见 `references/cron-tool-routing-constraints.md`。
+
+## 三、Job Storage & Direct Access
 
 Jobs are stored as JSON:
 
@@ -214,32 +212,30 @@ cronjob(
 - Exit code non-zero → error alert sent to user
 - Empty stdout → SILENT (nothing delivered)
 
-### Real Example: GitHub Trending Top 10
+### Real Example: GitHub Trending Top 10 (no_agent=False, script + LLM)
 
 ```bash
 # Script: ~/.hermes/scripts/github-trending.py
-# Fetches GitHub trending data, formats as Markdown top-10 list
-# Prints to stdout
+# Fetches GitHub trending data, formats as Markdown candidate list for the LLM
+# The LLM then filters, sorts, and writes the final report
 
 cronjob(
     action='create',
     name='GitHub 每日 Trending Top 10',
-    schedule='0 9 * * *',
-    script='github-trending.py',
-    no_agent=True,
-    deliver='feishu:oc_xxxxx'
+    schedule='0 10 * * *',        # Morning delivery
+    script='github-trending.py',   # Provides trending data as context
+    # no_agent=False (default) — LLM reads script output and produces final report
+    deliver='feishu:oc_xxxxx',
+    model={'provider': 'opencode-go', 'model': 'kimi-k2.6'}  # Per-job model pin
 )
 ```
 
-Output example:
-```
-# 🔥 GitHub Trending Top 10 — 2026-05-29
+The script prints Markdown-formatted repo candidates. The LLM loads them, picks the top 10 by relevance to the user's tech stack, and formats a short report.
 
-1. **owner/repo** ⭐1234 🍴56 | Python
-   Description here
-   https://github.com/owner/repo
-...
-```
+**When NOT to use no_agent=True:**
+- Output needs reasoning, filtering, or prioritization
+- The user wants a summary, not raw data
+- The script's output format is a data-collection block, not a finished message
 
 ### Comparison: no_agent=True vs False
 
@@ -252,13 +248,109 @@ Output example:
 
 ### Pitfall: CHANGING no_agent After Creation
 
-`cronjob(action='update')` with `no_agent` changed won't take effect until the job is paused/resumed or the gateway restarts. Safer: remove and recreate.
+## Troubleshooting
 
 1. **Job not firing** → Gateway down. Start Gateway.
 2. **Job fires but does nothing** → Prompt overwritten (see Pitfall #1). Restore from jobs.json backup or session history.
 3. **Chrome CDP fails** → Chrome not started with `--remote-debugging-port`. Start it.
 4. **Python import error** → Dependency not installed in Hermes venv. Use `uv pip install`.
 5. **Output not delivered** → `deliver` field misconfigured. Use `"origin"` to send output back to the creating chat. For Feishu groups, explicitly set `deliver="feishu:<chat_id>"` — never assume `"origin"` will resolve to the right group.
+
+## Cron Job Failure — 实战诊断流程
+
+当 cron 任务标记为 `last_status: error` 时，按以下顺序诊断：
+
+### Step 1: 看 `delivery_error`
+```bash
+cronjob(action='list')
+# 检查 last_delivery_error 字段
+```
+
+| delivery_error 有值？ | 含义 | 下一步 |
+|----------------------|------|--------|
+| **DNS 解析失败** (`Failed to resolve 'open.feishu.cn'`) | 本地网络不通（Clash 代理关闭 / DNS 漂移） | ❌ 非 LLM 问题。修复本地网络，重新跑一次任务 |
+| **403 / 401** | 飞书 token 过期 | 检查飞书凭证有效性 |
+| **为空 (null)** | 模型/工具调用阶段失败 | 进入 Step 2 |
+
+### Step 2: 看 agent.log 中的失败模式
+```bash
+grep '<job_id>' /Users/gu/.hermes/logs/agent.log | grep 'ERROR\|WARNING.*stale\|WARNING.*Broken pipe\|WARNING.*Connection error' | tail -10
+```
+
+| 日志模式 | 根因 | 修复 |
+|---------|------|------|
+| `Stream stale for 180s — no chunks received` → `[Errno 32] Broken pipe` | Provider 服务端断连（DeepSeek 常见） | 换 provider。pin 到 opencode-go 包月池 |
+| `APIConnectionError: Connection error`（连续 3+ 次重试全挂） | 本地网络不通（API 和 Delivery 同时失败） | 修复代理，不是模型问题 |
+| `quota_exceeded` / `rate_limited` | API 额度耗尽 | 换 fallback 模型或等额度恢复 |
+| `Team 'ai-team' does not exist` | Claude Code Mailbox 插件错误 ✅ 无害 | 会自动 auto-join，忽略 |
+
+### Step 3: 快速手动验证
+```bash
+# 手动 rerun（观察输出是否正常）
+cronjob(action='run', job_id='xxx')
+
+# 检查 rerun 后 last_status 是否变为 ok
+cronjob(action='list')
+```
+
+如果 rerun 成功，说明是瞬时故障（DeepSeek 断连、网络瞬断）。如果连续失败，需要换 provider 或排查网络。
+
+### 实战案例：2026-06-08 双重失败
+
+| 任务 | 时间 | agent.log 模式 | delivery_error | 根因 | 修复 |
+|------|------|---------------|----------------|------|------|
+| 世界杯早报 | 08:30 | `Stale stream 180s → Broken pipe x3` | null | DeepSeek 服务端断连 | 换 opencode-go 包月池 |
+| GitHub Trending | 10:01 | `APIConnectionError x6` | `Failed to resolve open.feishu.cn` | 网络全断（Clash 关闭） | 修复代理后手动 rerun |
+
+**关键判断**：早报的 delivery_error 是空（API 阶段就失败，没到 delivery 阶段）。Trending 的 delivery_error 有 DNS 错误（网络全断，包括 delivery）。这意味着即使早报 API 通了，也无法投递——两个不同根因同时发生。
+
+### ⚠️ PITFALL #6: Gateway 重启可能回滚手工编辑的 config/cron prompt
+
+**已发生**（2026-06-08）：用 `sed`/`Python` 手工编辑 `config.yaml` 后，Gateway 重启检测到 YAML 损坏（缩进错误、JSON 字符串 vs YAML 列表格式不匹配），自动回滚到清洁版本。连带 `mcp_servers` 段和 cron prompt（如存储在 config 相关文件中）一起丢失。
+
+**预防**：
+- MCP 服务器配置用 `hermes config set mcp_servers.<name>.<field>` 而非手工编辑
+- Cron prompt 用 `cronjob(action='update', ...)` 修改，不要手工改 crontab/JSON
+- 修改后立即 `cronjob(action='run')` 验证实际效果
+- 再用 `session_search` 查 actual cron session 的 bookend_start，确认 prompt 中搜索工具指令已更新（不要只看 prompt_preview 的截断预览）
+- 恢复文件在 `config.yaml.corrupt.*.bak`，可从中提取丢失配置
+
+Cron jobs inherit the global default provider (`config.yaml → model.provider`). If that provider goes down (server-side broken pipe, quota exhausted, rate limit), the job fails with zero fallback — there is no chain.
+
+**Two failure modes seen in production:**
+
+| Failure | Log Pattern | Root Cause | Fix |
+|---------|------------|------------|-----|
+| **DeepSeek server idle kill** | `Stream stale for 180s — no chunks received` followed by `[Errno 32] Broken pipe` after 3 retries | DeepSeek kills idle streams at 180s on first call; retry on the same provider and endpoint reproduces the same kill | Switch to a different provider for the job, or add a per-job model override pointing to OpenCode Go / Claude. |
+| **Local DNS / proxy failure** | `APIConnectionError: Connection error` on ALL provider calls AND `Failed to resolve 'open.feishu.cn'` on delivery | Local network (Clash proxy off, DNS misconfigured) — no outbound connectivity at all | Fix local proxy. Cron jobs are not immune to network outages. |
+
+**Prevention — always pin a per-job model for production cron tasks:**
+
+```python
+# Good — pins to a specific provider so it's stable even if the global default changes
+cronjob(action='create', ...,
+        model={'provider': 'deepseek', 'model': 'deepseek-chat'})
+**Better — use a provider with better uptime (OpenCode Go pool, Claude). For low-cost cron tasks (marketing intelligence, trending summaries) use the cheapest stable model:**
+```python
+cronjob(action='create', ...,
+        model={'provider': 'opencode-go', 'model': 'opencode_go_deepseek_flash'})
+```
+
+**Do NOT rely on `fallback_providers` in config.yaml** — that is a global setting and modifying it has side effects on non-cron sessions. Use per-job `model` field instead.
+
+**To add a model override to an existing job:**
+
+```python
+# Read the full job first (extract prompt), then:
+cronjob(action='update',
+        job_id='xxx',
+        prompt='<original prompt>',
+        model={'provider': 'opencode-go', 'model': 'kimi-k2.6'})
+```
+
+**Distinguish between "provider is down" and "network is down":**
+- Provider down → only the API host fails; delivery (feishu) still works
+- Network down → everything fails including delivery; the `delivery_error` field in cron list will show DNS resolution errors for the target platform
 
 ### ⚠️ PITFALL #3: `deliver` defaults to `"origin"` on create
 

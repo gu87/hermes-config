@@ -100,6 +100,77 @@ Evidence:
 - known_risks: ...
 ```
 
+## Closeout Memory Check（v1 最小实现）
+
+当验证报告 `Overall = READY` 且任务涉及以下任一触发信号时，在 closeout 前追加 Memory Check：
+
+**触发信号**（满足任一）：
+
+- 任务包含架构/技术决策
+- 任务产生可复用的经验/教训
+- **Bug fix 发现可复用根因**（typo / lint / 无根因小修复不触发）
+- 任务变更了项目运行状态
+- 任务引入新概念/术语/实体
+
+**不触发**（默认 `No Memory Update`）：
+
+- typo fix、lint fix、无根因小修复
+- 仅修改 1-2 个文件且无决策内容
+- 纯执行任务，无可复用产出
+
+**检查流程**：
+
+1. 快速扫描本次任务的关键产出（最多 30 秒）：
+   - 有没有需要别人知道的决策？
+   - 有没有踩了坑下次能避免的？
+   - 有没有项目状态发生了变更？
+
+2. 输出四种状态之一：
+   - `No Memory Update` — 无需记录（默认值，silent pass）
+   - `Knowledge Update Suggested` — 建议写入 MEMORY.md
+   - `ADR Update Suggested` — 建议写入或引用 ADR
+   - `Project State Update Suggested` — 建议更新 PROJECT.md（只提案，不自动写）
+
+3. 如果 `Knowledge Update Suggested` 或 `ADR Update Suggested` 或 `Project State Update Suggested`，输出 Memory Candidate：
+
+```text
+MEMORY CANDIDATE
+Status: Knowledge Update Suggested | ADR Update Suggested | Project State Update Suggested
+Memory Status: current | superseded | deprecated
+Text: <一句话描述值得记的内容>
+Source: <session_id/turn_id 或 ADR 编号>
+Last Confirmed: <YYYY-MM-DD>
+Reason: <为什么值得记，一句话>
+Relation: <none | linked_to:MEM-XXX | supersedes:MEM-XXX>
+```
+
+当 `Status: Project State Update Suggested` 时，Candidate 必须包含以下附加字段：
+
+```text
+Project: <project-slug>
+State key: <key 如 phase.active>
+Old value: <旧值，如有>
+New value: <新值>
+Pending: user confirmation required
+```
+
+**Memory Candidate 规则**：
+
+- 只 ADD，不做 UPDATE/DELETE
+- 必须带 source / Memory Status / last_confirmed
+- 关系字段可选（linked_to / supersedes / superseded_by）
+- **子 Agent 只允许提出 Candidate，不允许写入任何长期记忆文件**
+- **主 Agent（Hermes）将 Candidate 汇报给人，由人决定是否写入**
+
+**去重检查**（主 Agent 在输出 Candidate 前执行）：
+
+- 同 task/run 内已提过相同内容 → 跳过
+- 同 session 可多次执行 Memory Check，但每次做内容去重
+- MEMORY.md 已有语义等价条目 → 跳过
+- SOUL.md 已覆盖此内容 → 跳过
+
+---
+
 ## 判定规则
 
 - 任一关键验证失败：`Overall = NOT READY`

@@ -312,6 +312,7 @@ agents:
   tools:
   - file
   - web
+  - terminal
   permission: ask
   can_delegate: false
   capabilities:

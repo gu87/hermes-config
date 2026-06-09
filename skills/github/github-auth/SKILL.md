@@ -283,3 +283,9 @@ print('Updated GITHUB_TOKEN in .env')
 ```
 
 This is faster than regenerating a token on github.com — `gh` stores its own OAuth token in macOS keychain, which often outlives the env var copy.
+
+## Pitfall：gh keychain/OAuth vs 手动 PAT
+
+**推荐优先顺序**：`gh auth status` + `gh auth token` 写 `.env GITHUB_TOKEN` > 手动 PAT。
+
+原因：`gh` 使用 macOS keychain 存储 OAuth token，比手动 PAT 更不易过期，也不需要在 GitHub 设置页面手动续期。非 login shell（如 Agent 子进程）可能不继承 `GITHUB_TOKEN` 环境变量，此时用 `gh auth token` 动态读取是最可靠的方式。

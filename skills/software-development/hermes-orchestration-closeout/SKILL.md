@@ -1,7 +1,7 @@
 ---
 name: hermes-orchestration-closeout
 description: "Structured closeout protocol for Hermes multi-Agent delegation results."
-version: 1.0.0
+version: 1.1.0
 author: Hermes Agent (adapted from withkynam/vibecode-pro-max-kit orchestration protocol)
 license: MIT
 platforms: [linux, macos, windows]
@@ -62,6 +62,38 @@ Concerns:
 Next valid state:
 - commit | review | test | ask-user | return-to-plan | continue-implementation
 ```
+
+## Memory Check (v1)
+
+在 Closeout Packet 完成后，检查本次多 Agent 任务是否产生值得保留的长期知识。
+
+**触发条件**：
+
+当 closeout 满足以下任一条件时，加载 `verification-loop` skill 执行 Memory Check：
+- `Classification: ready` 且 drift signals ≥ 1
+- `Classification: needs-review` 且有关键决策产出
+- 任务涉及 Agent/model/skill/config 文件的变更
+
+**输出**：
+
+| 状态 | 含义 | 后续动作 |
+|------|------|----------|
+| `No Memory Update` | 无需记录 | Silent pass。不需要向人汇报 |
+| `Knowledge Update Suggested` | 有值得写入 MEMORY.md 的内容 | 向人展示 Memory Candidate，**不自动写入** |
+| `ADR Update Suggested` | 有值得记录为 ADR 的决策 | 向人展示 Memory Candidate + ADR 建议，**不自动写入** |
+| `Project State Update Suggested` | 有值得更新 PROJECT.md 的项目状态变更 | 向人展示 Candidate（含 State key / Old value / New value），**不自动写入。等待 user confirmation** |
+
+**子 Agent 权限**：
+
+- ✅ 子 Agent 在 outbox 中可以附带 `memory_candidate` 字段，格式同 verification-loop 中的 Memory Candidate
+- ❌ 子 Agent 不允许在任何情况下写入 MEMORY.md、USER.md、Obsidian Wiki、ADR
+- ⚠️ 主 Agent（Hermes）仍必须执行去重检查 + 向人汇报，不能直接信任子 Agent 的 Candidate
+
+**默认行为**：
+
+如果没有触发信号，Memory Check 默认输出 `No Memory Update`，不在 closeout 中产生额外输出。
+
+---
 
 ## Drift Signals
 

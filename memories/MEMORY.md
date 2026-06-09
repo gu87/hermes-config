@@ -1,8 +1,6 @@
 Hermes memory policy: MEMORY.md 只放每轮必须常驻的稳定事实和权威索引；用户长期偏好进 USER.md；长文档、历史记录、配置清单、排障细节进 Obsidian/OpenChronicle；可复用流程进 skill/runbook；临时进展不写入长期记忆。
 §
-涉及路径、账号、端口、运行状态、服务状态、当前模型或权限时，不凭 memory 判断，必须实时读取权威文件或运行健康检查。
-§
-权威索引：身份和角色边界看 `/Users/gu/.hermes/SOUL.md`；知识分层看 `/Users/gu/.hermes/docs/hermes-authority-map.md`；运行态和自检看 `/Users/gu/.hermes/bin/hermes-system-doctor.py` 与 `/Users/gu/.hermes/docs/hermes-runtime-runbook.md`；Agent 编制/能力/路由看 `config/agent-registry.json` 和 `hermes-agent/configs/managed_agents/agents.yaml`；模型看 `config/models.yaml`。
+权威索引：身份和角色边界看 `/Users/gu/.hermes/SOUL.md`；知识分层看 `/Users/gu/.hermes/docs/hermes-authority-map.md`；运行态和自检看 `/Users/gu/.hermes/bin/hermes-system-doctor.py` 与 `/Users/gu/.hermes/docs/hermes-runtime-runbook.md`；Agent 编制/能力/路由看 `config/agent-registry.json` 和 `hermes-agent/configs/managed_agents/agents.yaml`；模型看 `config/models.yaml`；ADR 看 `docs/adr/INDEX.md`（当前 4 个：Closeout Memory Check v1 / Codex-like Workbench / Control-Plane-First / verify-task Dual Status）。
 §
 OpenChronicle 召回规则：需要历史细节时调用 `mcp_openchronicle_search`，用 `<memory-context>...</memory-context>` 引用；不要把低频细节塞回 system prompt。
 §
@@ -10,20 +8,26 @@ OpenChronicle 召回规则：需要历史细节时调用 `mcp_openchronicle_sear
 §
 当前 Hermes 运行模型：单飞书入口，默认/马蒂尼 `ai.hermes.gateway` 常驻；旧 profile gateway 默认禁用。Agent 编制通过主入口内部路由/managed agents 调度。
 §
-核心 Agent 编制：Hermes 技术翻译官、Claude 主程执行官、Codex 代码审查官、DeepSeek 低成本快工、Intelligence 情报研究员、Pirlo 商业策划师、Designer 视觉设计师、TARS 桌面操作员、Ambrosini 质量门卫。
+Closeout Memory Check v1 dogfood 观察项：验证中——真实任务中观察是否该提醒时提醒、不该提醒时静默、不产生噪音、不重复提案。发现问题只记录，不立即改。
 §
-自检防漂移规则：系统快照必须先跑 `python3 /Users/gu/.hermes/bin/hermes-system-doctor.py`；报告容量、模型、Agent、skill、toolsets 时必须给源文件/实时检查证据；旧日志只能标 STALE，不能单独定性当前故障。
+记忆系统 dogfood 观察期（2026-06-08 起） — 三条观察项：
+1. 开工前是否正确加载 PROJECT.md
+2. 收工前是否正确触发 Closeout Memory Check（4-state output）
+3. MEMORY / SOUL / PROJECT.md 是否出现重复或漂移
+规则：不新增记忆层，不引入新依赖，不做自动学习。发现偏离时报告用户，不自作主张修复。
 §
-副作用操作规则：涉及安装、部署、配置、写代码、改核心文件、删除/覆盖等操作时先判断风险并走合适分工；不可逆或核心配置操作需用户确认。
+行为规则：当对话线程被其他任务打断后，当前子任务结束时必须主动捞回未完成的线程——"baoyu-design 还要继续吗？"之类。用户明确反感「给了建议动作但被打断后不回捞」的遗漏。这不是建议，是需要执行的闭环检查。
 §
-代理环境：Clash Verge 常用本地代理 `127.0.0.1:7890`；非 login shell 可能不读取 `~/.zshrc` 代理变量，必要时显式传 `--proxy` 或 env。npm registry 国内可能超时，优先考虑 npmmirror。
+Gu 期望 Hermes 在话题被中断后主动捞回未完成的任务，而不是静默丢弃。"怎么又没有反馈了"是重复出现的纠正模式——中断不等于取消，闭环责任在 Hermes。
 §
-GitHub MCP 认证优先走 `gh auth status` + `gh auth token` 写 `.env` GITHUB_TOKEN；gh 用 keychain/OAuth，比手动 PAT 更不易过期。
+lark-cli 升级：1.0.39 → 1.0.49。npm postinstall 脚本 `node scripts/install.js` 会超时，workaround：`npm i -g @larksuite/cli@latest --ignore-scripts` 后手动跑 `node /path/to/scripts/install.js`。feishu-operations skill 已由 postinstall 自动更新为动态查版。
 §
-Claude agent 委托路径与本地 Claude Code Pro 独立：Hermes 委托通过外部 Claude Code CLI，需避免继承错误 `ANTHROPIC_API_KEY`；agent 401 不等于 Claude Code 坏。
+baoyu-design 已安装到 ~/.agents/skills/baoyu-design，symlink 到 ~/.hermes/skills/baoyu-design。设计对比测试输出目录：~/.hermes/output/design-compare/。delegate_task 不支持 per-task model 选择，跨模型测试需用 cronjob 的 model 参数。
 §
-任务-工具匹配规则：收到内容转换/生成类任务时，先检查可用 skill 或专用服务；Markdown/内容转样式化 HTML 优先用 html-anything API（14732），不手写 HTML。
-§
-LibreOffice CLI automation 已部署，归 TARS 桌面自动化域；用 `python3.11 -m cli_anything.libreoffice`，详情看 skill `libreoffice-cli`。
-§
-verify-task.py 对 outbox.status 有双层校验（TASK_STATUSES vs VALID_OUTBOX_STATUSES），交集仅 {failed, blocked}。标准格式 outbox（含 agent_id+next_action）无法用 success/completed 通过。非标准格式（无 next_action）可绕过。详细设计分析见 docs/adr/ADR-verify-task-dual-status-validation.md，已在 verification-loop skill 的 pitfall 节引用。当前判定为设计特性非 bug，不在 v2.8.1 修改，v2.8.2 计划降级为 warning。
+SOUL 待更新项（本次会话发现，跨会话持久化到此 memory）：
+
+1. **"怎么又没有反馈了"** — 任务被用户新消息打断后，收尾时没有主动把未完成事项捞回来。规则：每次完成任务或话题切换前，扫描是否有之前提出但未闭合的 action item，有则主动带到用户面前。
+
+2. **"你让我看看，你别自己判断"** — 做对比/评估类任务时（设计对比、模型对比），先发原始输出给用户看，再做分析。不要只说结论不让看。数据展示类同理：先给表，再给判断。
+
+3. **"这是有问题还是没有问题？"** — 用户问的是结论，不需要展开排障全流程。非阻塞性小问题直接说"没问题"，阻塞性问题说"有问题 + 一句话根因 + 修复方案"，不要给完整诊断日志。

@@ -1,6 +1,6 @@
 # Hermes Authority Map
 
-Last updated: 2026-05-18
+Last updated: 2026-06-08
 
 This document defines which file is authoritative for each kind of Hermes knowledge. Use it to prevent MEMORY.md, SOUL.md, skills, and Obsidian notes from drifting into overlapping records.
 
@@ -10,6 +10,7 @@ This document defines which file is authoritative for each kind of Hermes knowle
 |------|--------------------|-------------------|---------------------------|
 | Identity and operating boundaries | `/Users/gu/.hermes/SOUL.md` | Hermes identity, role boundaries, escalation rules, confirmed philosophy | Runtime ports, historical fixes, long tool notes |
 | Always-on memory | `/Users/gu/.hermes/memories/MEMORY.md` | Stable facts needed in every turn, memory classification rules, pointers to authority docs | Detailed service status, one-off task progress, long configuration inventories |
+| Project context | `/Users/gu/.hermes/docs/projects/<slug>/PROJECT.md` | Current project state (branch, phase, active decisions, recent activity, open risks). First file read when resuming a project. | Long-form project docs (→ Obsidian Wiki), architecture decisions (→ ADR), always-on facts (→ MEMORY.md) |
 | User preference memory | `/Users/gu/.hermes/memories/USER.md` | Stable user preferences and working style | Temporary opinions, inferred tool stacks not confirmed by Gu |
 | Rich user profile | `/Users/gu/.hermes/memories/user-profile.md` | Longer profile notes when needed for external review or migration | Facts that must be injected every turn |
 | Agent registry | `/Users/gu/.hermes/config/agent-registry.json` | Agent IDs, capabilities, toolsets, permissions, routing rules | Narrative role philosophy, troubleshooting history |
@@ -21,6 +22,7 @@ This document defines which file is authoritative for each kind of Hermes knowle
 ## Memory Rules
 
 - `MEMORY.md` should stay small and stable. It should say where to look, not copy every detail.
+- `PROJECT.md` should stay current and structured. Each state entry must carry `source`, `last_confirmed`, and `status`. State changes follow ADD-only: old entries are marked `superseded`, never deleted. `recent` is a rolling snapshot (max 3 entries); old entries are removed directly without provenance tracking — full history lives in session/OpenChronicle/Obsidian.
 - `USER.md` should only contain preferences Gu has confirmed or repeatedly demonstrated.
 - Do not write inferred tool stacks into memory unless Gu confirms them.
 - Runtime facts are volatile. Check the service, config file, or runbook instead of trusting memory.

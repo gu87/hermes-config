@@ -454,7 +454,8 @@
         "model": "default",
         "toolsets": [
           "file",
-          "web"
+          "web",
+          "terminal"
         ],
         "blocked_tools": [
           "delegate_task",

@@ -932,6 +932,42 @@ grep -E "keepalive ping timeout|reconnect|NameResolutionError" ~/.hermes/logs/ga
 
 **关联**：这也在 `visual-novel-studio` 的图片审计协议中有详细说明。
 
+### 19. Web 搜索 API 耗尽 + 无 terminal fallback → Agent 超时
+
+**症状**：Intelligence agent 在 180s 内完成 7 次 API 调用后超时，`exit_reason: "timeout"`。父 Agent 自己调用 `mcp_minimax_web_search` 同样报 `2056-usage limit exceeded`。
+
+**根因链路**：
+1. Intelligence 的 `toolsets` 只有 `["file", "web"]`——没有 `terminal`、没有 `skills`
+2. `web` toolset 背后的唯一搜索 API（Minimax）配额耗尽
+3. Agent 的 fallback model chain（kimi26 → qwen37_max → qwen36 → deepseek_flash）无法解决——工具层卡死，换模型没用
+4. 7 次调用全在撞同一堵墙，最终超时
+
+**已验证的替代路径**（父 Agent 用 `terminal` + `curl`）：
+```bash
+curl -s --max-time 15 "https://openrouter.ai/api/v1/models" -o /tmp/models.json
+python3 -c "
+import json
+with open('/tmp/models.json') as f:
+    data = json.load(f)
+for m in data.get('data',[]):
+    if 'target-model-name' in (m.get('id','')+m.get('name','')).lower():
+        print(json.dumps(m, ensure_ascii=False, indent=2))
+"
+```
+OpenRouter `/api/v1/models` 返回所有可用模型的完整 spec（参数、定价、上下文长度、架构），无需 API key。这是 web 搜索耗尽时最可靠的模型信息获取方式。
+
+**修复**（推荐）：给 Intelligence 加 `terminal` toolset：
+```json
+"toolsets": ["file", "web", "terminal"]
+```
+这样 web 搜索耗尽时可以用 `curl` 直接请求 API 端点。
+
+**不需要**：换更大配额（会反复出现）、换模型（问题在工具层）、加 scrapling-fetch（terminal + curl 更通用）。
+
+**触发信号**：`2056-usage limit exceeded` + subagent 7+ API calls + timeout。下次看到这个组合，不要重试 Intelligence——直接用 `terminal` + `curl`。
+
+**参考**：`references/model-comparison-fallback-openrouter.md`
+
 ### 20. `.env` 是受保护文件，子 Agent 无法修改
 
 **问题**：delegation 的子 Agent 无法通过 `patch` 或 `write_file` 修改 `.env` 文件。系统内置了 file-mutation verifier 将 `.env` 标记为受保护的系统凭据文件，写操作直接被拒绝（`Write denied: '/path/.env' is a protected system/credential file.`）。

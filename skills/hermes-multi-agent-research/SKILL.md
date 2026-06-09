@@ -1381,4 +1381,4 @@ gateway.error.log 输出的关键警告和错误。
 | 忽略反馈 | 分析反馈 → 按 USER.md / MEMORY.md / skill / Obsidian 分层沉淀 |
 | deepseek-worker 用 CLI 调用 | deepseek-worker 只能通过 Mailbox 异步派发 |
 | **协调者自己跑 find/ls/du 做文件扫描** | **派给 deepseek-tui — 即使 ≤3 步，量大文件枚举也不占用协调者上下文** |
-| Intelligence 首次调用 OpenCode 404 就放弃 | **重试一次** — Intelligence 的 model_strategy 有 fallback 链（opencode_go_qwen37_max → opencode_go_qwen36 → opencode_go_kimi26 → deepseek_flash）。首次 OpenCode API 404 不代表 Agent 不可用，Kimi K2.6 fallback 在调研任务上实测可用（2026-05-30 验证：404 后重试，模型自动降级到 kimi-k2.6，18 次工具调用、55 万 input tokens 完成调研）。遇到 Intelligence 报 404 时，不要下结论说「调研工具不可用」，重试一次即可。 |
+Intelligence 首次调用 OpenCode 404 就放弃 → **重试一次** — Intelligence 的 model_strategy 有 fallback 链（opencode_go_qwen37_max → opencode_go_qwen36 → opencode_go_kimi26 → deepseek_flash）。首次 OpenCode API 404 不代表 Agent 不可用，Kimi K2.6 fallback 在调研任务上实测可用（2026-05-30 验证：404 后重试，模型自动降级到 kimi-k2.6，18 次工具调用、55 万 input tokens 完成调研）。遇到 Intelligence 报 404 时，不要下结论说「调研工具不可用」，重试一次即可。\n| 需要从 OpenCode 多个候选模型中选出最适合某类任务的模型 | 用同一 brief 并行测试 → 按创意/结构/KPI/表达等维度对比 | 测试方法、已知坑（stdin 不可用、qwen3.7-max oa-compat 不兼容）、实测对比数据见 `references/opencode-model-testing.md` |

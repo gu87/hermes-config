@@ -19,7 +19,25 @@ The goal is to preserve Claude Design's useful design behavior and taste while r
 
 **Before starting, check for other web-design skills like `popular-web-designs` (ready-to-paste design systems for Stripe, Linear, Vercel, Notion, etc.) and `design-md` (Google's DESIGN.md token spec format).** If the user wants a known brand's look, load `popular-web-designs` alongside this one and let it supply the visual vocabulary. If the deliverable is a token spec file rather than a rendered artifact, use `design-md` instead. Full decision table below.
 
-## When To Use This Skill vs `popular-web-designs` vs `design-md`
+## When To Use This Skill vs `popular-web-designs` vs `design-md` vs `baoyu-design`
+
+Hermes has four design-related skills. They do different jobs — load the right one (or combine them):
+
+| Skill | What it gives you | Use when the user wants... |
+|---|---|---|
+| **claude-design** (this one) | Design *process and taste* — how to scope a brief, gather context, produce variants, verify a local HTML artifact, avoid AI-design slop | a from-scratch designed artifact (landing page, prototype, deck, component lab, motion study) with no specific brand or token system dictated |
+| **baoyu-design** | Higher-fidelity Claude Design engine — 24 built-in skills, starter components (device frames, tweaks panel, deck stage), design-system authoring, PPTX/PDF export | **formal brand proposals, external-facing decks, high-stakes visual work** where typographic sophistication and compositional ambition matter. Installed via `npx skills add JimLiu/baoyu-design` |
+| **popular-web-designs** | 54 ready-to-paste design systems — exact colors, typography, components, CSS values for sites like Stripe, Linear, Vercel, Notion, Airbnb | "make it look like Stripe / Linear / Vercel", a page styled after a known brand, or a visual starting point pulled from a real product |
+| **design-md** | Google's DESIGN.md spec format — author/validate/diff/export design-token files, WCAG contrast checking, Tailwind/DTCG export | a formal, persistent, machine-readable design-system *spec file* (tokens + rationale) that lives in a repo and gets consumed by agents over time |
+
+**Routing rule**:
+
+- **Quick drafts, internal docs, data tables** → claude-design (fast, lightweight, no external fonts)
+- **Formal proposals, external decks, brand work** → baoyu-design (richer typography, starter components, export chain)
+- **Match a known brand's look** → popular-web-designs (and let claude-design or baoyu-design drive the process)
+- **Author the tokens spec itself** → design-md
+
+baoyu-design comparison (2026-06-09): On the same "懂球帝 × 百威 世界杯营销方案封面" prompt, baoyu-design produced a richer design (Google Fonts, central orb motif, staggered animation, 572 lines) while claude-design produced a cleaner but more conservative result (system fonts, simpler layout, 381 lines). baoyu-design took ~2.5× longer. See `references/baoyu-comparison.md`.
 
 Hermes has three design-related skills under `skills/creative/`. They do different jobs — load the right one (or combine them):
 
@@ -579,6 +597,16 @@ When adapting a Claude Design style request into CLI/API mode, use this mental t
 ```text
 You are running in CLI/API mode, not hosted Claude Design. Ignore references to hosted-only tools or preview panes. Produce complete local design artifacts, usually self-contained HTML with embedded CSS/JS, and verify with available local tools before returning. Preserve the design process: gather context, define the system, produce options, avoid filler, and meet a high visual bar.
 ```
+
+## Model Selection for Design Tasks
+
+For design tasks run through delegate_task or cronjob, model choice significantly impacts output quality. See [`references/baoyu-design-model-comparison.md`](references/baoyu-design-model-comparison.md) for multi-model benchmark results (deepseek_pro, opencode_go minimax27/glm51/qwen37max, claude_opus).
+
+Quick routing:
+- Formal client proposals → **claude_opus** (best design taste, ¥15/M)
+- Internal drafts → **claude_sonnet** or **opencode_go_minimax27**
+- Daily design work → **deepseek_pro** (current default, good enough)
+- Never use deepseek_flash for baoyu-design (38KB system-prompt overloads it)
 
 ## Pitfalls
 

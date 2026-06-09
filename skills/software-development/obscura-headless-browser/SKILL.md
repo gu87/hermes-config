@@ -1,6 +1,6 @@
 ---
 name: obscura-headless-browser
-description: Obscura — Rust 写的轻量 headless 浏览器，用于网页抓取和数据提取。57MB 二进制，30MB 内存，V8 引擎，CDP 协议兼容。安装于 ~/bin/obscura。补充 Chrome 而非替代。
+description: Obscura — Rust 写的轻量 headless 浏览器，用于网页抓取和数据提取。57MB 二进制，30MB 内存，V8 引擎，CDP 协议兼容。安装于 ~/bin/obscura。替代 Chrome 做 HTML 抓取，截图/视觉才用 Chrome。
 tags: [obscura, headless, browser, web-scraping, cdp, rust]
 agents: [deepseek-tui, codex]
 ---
@@ -11,7 +11,7 @@ agents: [deepseek-tui, codex]
 
 Obscura 是一个 Rust 编写的轻量级 headless 浏览器（v0.1.0），使用真正的 V8 引擎执行 JavaScript，支持 Chrome DevTools Protocol（CDP）。
 
-**核心定位**：轻量 fetch/scrape 工具，**补充** Chrome headless 而非替代。适合简单网页内容提取，不适合需要截图/CSS 渲染/完整 Puppeteer 兼容的场景。
+**核心定位**：轻量 fetch/scrape 工具，**替代 Chrome** 做 HTML 抓取和 JS 渲染。30MB 内存，用完即毁，适合 cron 任务和日常网页抓取。需要截图/视觉分析时才用 Chrome。
 
 ## 安装位置
 
@@ -153,6 +153,19 @@ const browser = await chromium.connectOverCDP({ endpointURL: 'ws://127.0.0.1:922
 # 获取所有链接
 ~/bin/obscura fetch $URL --dump links --quiet
 ```
+
+### Cron 任务集成
+
+Cron 任务中 Obscura 替代 Chrome 做 JS 渲染抓取。任务结束自动销毁，不占驻内存。在 cron prompt 中搭配 AnySearch MCP：
+
+```
+搜索 → mcp_anysearch_search / mcp_anysearch_batch_search
+抓取（静态页） → mcp_anysearch_extract（AnySearch 自带）
+抓取（需要 JS 渲染） → Obscura terminal() 调用
+Chrome/Playwright → 禁用
+```
+
+注意：Obscura 默认通过 `http://127.0.0.1:7890` 代理路由流量（Clash 代理）。如果代理没运行，部分 CDN 站点会连接失败。
 
 ## 初始安装命令
 

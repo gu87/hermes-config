@@ -19,19 +19,15 @@ agents: [hermes]
 # 飞书操作集
 
 > 最后更新: 2026-05-07
-> 核心原则：常规飞书操作**优先**走 `lark-cli`（已安装），认证通常自动处理。lark-cli 已配置双 profile：默认 `nesta` 操作内斯塔；需要操作 Gateway 主 bot **马尔蒂尼** 时，显式使用 `--profile maldini`。如果 CLI 能力、profile、权限或返回内容不确定，直接用官方后台/API 响应做源头验证。
+> 核心原则：常规飞书操作**优先**走 `lark-cli`（已安装），认证通常自动处理。当前唯一 active profile 为 `cli_a94fbfdef7e31ccb`（马尔蒂尼），是默认 profile 无需 `--profile` 参数。如果 CLI 能力、profile、权限或返回内容不确定，直接用官方后台/API 响应做源头验证。
 
 ---
 
 ## 工具
 
-- **lark-cli** — 路径 `~/.npm-global/bin/lark-cli`，版本 1.0.12
+- **lark-cli** — 路径 `~/.npm-global/bin/lark-cli`，用 `npm view @larksuite/cli version` 查最新版（当前约 1.0.49，每日发版）。升级：`npm i -g @larksuite/cli@latest`
 - **Hermes Gateway Bot** — 名称 **马尔蒂尼**，app_id: `cli_a94fbfdef7e31ccb`。凭证存于 `~/.hermes/.env`，由 Hermes Gateway 读取。**你和我对话走这个 Bot。**
-- **lark-cli profile: `maldini`** — 名称 **马尔蒂尼**，app_id: `cli_a94fbfdef7e31ccb`。凭证存于 macOS Keychain。
-- **lark-cli profile: `nesta`** — 名称 **内斯塔**，app_id: `cli_a9434df9ad3a1cb6`。凭证存于 `~/.lark-cli/config.json` + macOS Keychain。当前默认 profile。
-- **独立 AI 助手 Bot** — 名称 **皮尔洛**，app_id: `cli_a95bb5a854f8dcc3`。描述"AI助手"，凭证**不在本机**。
-
-> ⚠️ **关键：三个飞书应用相互独立！** Hermes Gateway 默认走**马尔蒂尼**，OpenClaw/默认 lark-cli 走**内斯塔**，皮尔洛是独立的。lark-cli 已支持 `nesta` 与 `maldini` 双 profile，查身份或操作资源时必须显式确认 profile，**不要混淆它们的 App ID 和能力范围。**
+- **lark-cli profile: `cli_a94fbfdef7e31ccb`** — 当前唯一 active profile，对应马尔蒂尼。凭证存于 macOS Keychain。默认 profile 无需 `--profile` 参数。**注意**: 旧文档可能引用 `--profile maldini`，该 profile 名已不存在。
 
 ---
 
@@ -64,17 +60,126 @@ lark-cli calendar events instance_view --params '{"calendar_id":"primary","start
 lark-cli contact +search-user --query "John"
 ```
 
+### 邮件
+
+飞书邮件通过 `lark-cli mail` 子命令操作（CLI 封装了 API），不要手动拼 `/open-apis/mail/v1/...` 路径。
+
+**权限前提**：
+- 邮件是用户数据，必须用 **user token**（非 bot token）
+- 马尔蒂尼 `cli_a94fbfdef7e31ccb` 已开通全部 8 个 `mail:*` scope
+- 如果 `lark-cli auth status` 显示 `user identity: missing`，走 device 授权流程（见下方）
+
+#### 列邮件（triage）
+
+```bash
+# 列出最近 20 封（默认 INBOX）
+lark-cli mail +triage --max 20
+
+# 只看未读
+lark-cli mail +triage --filter '{"is_unread":true}' --max 50
+
+# 按发件人过滤
+lark-cli mail +triage --filter '{"from":["wuzhengying@dongqiudi.com"]}' --max 50
+
+# 全文关键词搜索
+lark-cli mail +triage --query "提成 销售" --max 50
+
+# 输出 JSON（含附件/标签等完整字段）
+lark-cli mail +triage --max 50 --format json
+```
+
+**已知限制**：triage 默认搜索窗口可能只覆盖数周。较早的邮件可能搜不到（即使 filter/query 正确）。
+
+#### 读邮件正文
+
+```bash
+# 获取完整内容（含 body_plain_text、body_html、attachments）
+lark-cli mail +message --message-id "<message_id>"
+
+# JSON 格式（方便解析）
+lark-cli mail +message --message-id "<message_id>" --format json
+```
+
+#### 读邮件线程
+
+```bash
+lark-cli mail +thread --thread-id "<thread_id>"
+```
+
+**注意**：实测 thread API 有时返回 0 items，即使同线程有多封邮件。此时改用 triage 按 subject 搜 + 逐个 message 读取作为替代方案。
+
+#### 下载附件
+
+附件下载是两步流程：
+
+```bash
+# Step 1: 获取临时下载 URL（有时效）
+lark-cli mail user_mailbox.message.attachments download_url \
+  --params '{"user_mailbox_id":"me","message_id":"<msg_id>","attachment_ids":["<att_id>"]}' \
+  --format json
+
+# Step 2: 从 JSON 输出提取 download_url，curl 下载
+URL=$(lark-cli mail user_mailbox.message.attachments download_url \
+  --params '{"user_mailbox_id":"me","message_id":"<msg_id>","attachment_ids":["<att_id>"]}' \
+  --format json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['download_urls'][0]['download_url'])")
+curl -s -o output.jpg "$URL"
+```
+
+**陷阱**：`--output` 只接受相对路径，需要先 `cd` 到目标目录。
+
+完整附件下载的步步实录（含所有失败路径和最终可行流程）见 `references/feishu-mail-attachment-download.md`。
+
+#### 定时检查未读邮件
+
+用 cronjob 创建每日任务，`enabled_toolsets: ["terminal"]` 即可（lark-cli 在 PATH 中，不需要 web/search 等其他工具集）。
+
+```bash
+# 关键：用 lark-cli mail +triage --filter '{"is_unread":true}' --format json
+# cron 的 prompt 中嵌入完整 bash 命令，让 cron agent 执行并汇总
+# model 推荐 opencode-go / opencode_go_deepseek_flash（成本低，API 调用够用）
+```
+
+参考：已创建的「每日邮件未读检查」cron（job_id: `ccc94c3d1d41`，每日 10:30，enabled_toolsets: `["terminal"]`）
+
+#### User Token 重新授权流程（device authorization）
+
+当 `lark-cli auth status` 显示 `user identity: missing` 时：
+
+```bash
+# Step 1: 发起 device 授权，获取 verification_url
+lark-cli auth login --domain mail --no-wait --json
+# 输出包含 verification_url 和 device_code
+
+# Step 2: 让用户在浏览器/Lark 里打开 verification_url，点击「授权」
+open "<verification_url>" -a Lark
+
+# Step 3: 用户确认后，用 device_code 完成登录
+lark-cli auth login --device-code <device_code>
+
+# Step 4: 验证 user identity 已就绪
+lark-cli auth status  # 应显示 user: ready
+```
+
+#### 诊断命令
+
+```bash
+lark-cli auth scopes     # 查看已配置的权限 scope 列表
+lark-cli auth status     # 查看 bot/user identity 状态
+lark-cli mail user_mailboxes profile --params '{"user_mailbox_id":"me"}'  # 确认邮箱身份
+```
+
+#### 桌面客户端（备选方案）
+
+```bash
+open -a "Lark" "https://mail.feishu.cn/"
+# 注意：macOS 上 App 名是 "Lark.app"，不是 "Feishu.app"
+```
+
 ### 通用 API 调用
 
 ```bash
-# 默认 profile：nesta（内斯塔）
+# 默认 profile：cli_a94fbfdef7e31ccb（马尔蒂尼）
 lark-cli api GET /open-apis/bot/v3/info
-
-# 显式使用内斯塔
-lark-cli --profile nesta api GET /open-apis/bot/v3/info
-
-# 显式使用马尔蒂尼
-lark-cli --profile maldini api GET /open-apis/bot/v3/info
 
 # GET 请求
 lark-cli api GET /open-apis/calendar/v4/calendars
@@ -107,38 +212,16 @@ lark-cli api GET ... --as auto
 
 ---
 
-## 配置信息
+### 配置信息
 
-### Hermes Gateway Bot（马尔蒂尼）
+#### Hermes Gateway Bot（马尔蒂尼）
 - app_id: `cli_a94fbfdef7e31ccb`
 - app_name: `马尔蒂尼` ✅ 已确认（2026-05-06）
 - app_secret: 存于 `~/.hermes/.env`
-- open_id: `ou_b455ec67f11b87a1befdc2c8326c5717` ✅ 已确认（2026-05-06）
+- open_id: `ou_b455ec67f11b87a1befdc2c8326c5717`
 - domain: `feishu`
 - 用途：Gateway 通过 WS 连接飞书，收发 DM/群聊消息、处理事件
-- lark-cli 操作方式：`lark-cli --profile maldini ...`
-
-### lark-cli Bot（内斯塔）
-- app_id: `cli_a9434df9ad3a1cb6`
-- app_secret: 存于 macOS Keychain（`appsecret:cli_a9434df9ad3a1cb6`）
-- 配置：`~/.lark-cli/config.json`
-- 用途：命令行工具，执行 API 调用
-- open_id: `ou_d4d4bcffd234aa177b1458ae0381934c`
-- lark-cli 操作方式：`lark-cli --profile nesta ...`，也是当前默认 profile
-
-### 三 bot 的影响与确认方法
-
-**⚠️ 关键工作流：查 Bot 信息不要猜，直接上开发者后台。**
-Gu 明确说过：不要从本地配置文件瞎猜 Bot 对应关系，直接打开 https://open.feishu.cn/app 登录后看应用列表。登录后的浏览器工具 snapshot 直接显示所有 Bot 的名称、App ID、状态。
-
-| 场景 | 可用工具 | 备注 |
-|------|---------|------|
-| DM 收发消息 | Gateway → 马尔蒂尼 | 正常 |
-| lark-cli 调 API | 默认 `nesta`，可显式指定 profile | 默认查到的是内斯塔 |
-| lark-cli 查内斯塔身份 | `lark-cli --profile nesta api GET /open-apis/bot/v3/info` | app_name 应为内斯塔 |
-| lark-cli 查马尔蒂尼身份 | `lark-cli --profile maldini api GET /open-apis/bot/v3/info` | app_name 应为马尔蒂尼 |
-| API 拉马尔蒂尼进群 | 优先用 `--profile maldini` | 必须确认权限和 member_id_type |
-| 查全部 Bot 列表 | 浏览器登录开发者后台 | https://open.feishu.cn/app → 直接看应用列表 |
+- lark-cli profile: `cli_a94fbfdef7e31ccb`（唯一 active profile，默认）
 
 ---
 
@@ -160,8 +243,14 @@ Gu 明确说过：不要从本地配置文件瞎猜 Bot 对应关系，直接打
 
 - ⚠️ **不要在常规场景手动 curl + 自己管 token** — lark-cli 通常能自动处理认证。只有当 lark-cli 缺少接口封装、profile/权限需要源头核验、输出被工具遮蔽，或必须验证 Gateway 主 bot token 时，才按官方 OpenAPI/API 响应直接调用，并注意不要暴露 secret。
 - ❌ **不要用 feishu_doc_read 工具** — 它只工作在 Feishu 评论上下文，DM 里不可用。用 lark-cli 代替
-- ❌ **不要把 bot 名称搞混淆** — 一共三个独立 Bot：马尔蒂尼（Hermes Gateway）、内斯塔（lark-cli/OpenClaw）、皮尔洛（独立 AI 助手，凭证不在本机）。皮尔洛和马尔蒂尼**不是同一个 Bot**，它们的 App ID 不同。
-- ❌ **不要用默认 lark-cli 查到的 bot 信息去配 Gateway** — 默认 profile 是内斯塔；查马尔蒂尼必须加 `--profile maldini`
-- ❌ **拉 bot 进群不要用 open_id** — 必须用 `member_id_type: app_id` + bot 的 app_id，不然报 `invalid_id_list`
+- ❌ **邮件接口报 `need_user_authorization` 不一定是权限没开** — 先用 `lark-cli auth scopes` 确认权限 scope 是否已配置，再用 `lark-cli auth status` 检查 user identity 是否 ready。常见根因是 user token 过期，走 `lark-cli auth login --domain mail` 流程重新授权即可，无需去开放平台改配置。
 - ❌ **不要在 shell 里直接 cat/echo .env** — FEISHU_APP_SECRET 会被隐蔽工具截断显示。用 Python 读文件
 - ✅ **lark-cli 已安装** — `which lark-cli` 确认在 `~/.npm-global/bin/`
+- ⚠️ **npm 全局安装可能因 postinstall 脚本超时** — `npm i -g @larksuite/cli@latest` 的 `scripts/install.js` 有时超过 terminal() 默认 60s 超时。解决：`npm install -g @larksuite/cli@latest --ignore-scripts && node /path/to/scripts/install.js`。升级时如果 `npm i -g @larksuite/cli@latest` 因 postinstall 脚本超时被 SIGTERM，先 `--ignore-scripts` 再手动 `node scripts/install.js`
+- ⚠️ **npm upgrade 超时** — `npm install -g @larksuite/cli@latest` 的 postinstall 脚本（`scripts/install.js`）可能超过 `terminal()` 默认 60s 超时被 SIGTERM。解决：`npm install -g @larksuite/cli@latest --ignore-scripts` 跳过 postinstall，然后手动 `node /Users/gu/.npm-global/lib/node_modules/@larksuite/cli/scripts/install.js`（给 120s）。install.js 会自动更新本 skill 的内容。
+- ⚠️ **npm 升级 lark-cli 超时** — `npm i -g @larksuite/cli@latest` 的 postinstall 脚本 (`node scripts/install.js`) 可能在 Hermes 60s 默认超时内跑不完。解决方案：先 `--ignore-scripts` 安装包体，再手动跑 postinstall：
+  ```bash
+  npm install -g @larksuite/cli@latest --ignore-scripts
+  node /Users/gu/.npm-global/lib/node_modules/@larksuite/cli/scripts/install.js
+  ```
+  这不是 CLI 的 bug，是 postinstall 脚本在慢网络/低资源下的正常耗时。

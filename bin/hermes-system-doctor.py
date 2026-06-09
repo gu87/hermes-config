@@ -14,6 +14,7 @@ import datetime as dt
 import http.client
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -145,13 +146,22 @@ def check_processes() -> Check:
     text = proc.stdout
     expected = {
         "gateway": "hermes_cli.main gateway run",
-        "dashboard_9119": "hermes_cli.main dashboard --port 9119",
         "openchronicle": "openchronicle start",
         "codegraph_mcp": "codegraph.js serve --mcp",
     }
     missing = [name for name, needle in expected.items() if needle not in text]
+    dashboard_ports = sorted(
+        {
+            int(port)
+            for port in re.findall(r"hermes_cli\.main dashboard\b.*?--port (\d+)", text)
+        }
+    )
+    if not dashboard_ports:
+        missing.append("dashboard")
     status = "OK" if not missing else "WARN"
     detail = "running: " + ", ".join(name for name in expected if name not in missing)
+    if dashboard_ports:
+        detail += f", dashboard:{','.join(str(port) for port in dashboard_ports)}"
     if missing:
         detail += "; missing: " + ", ".join(missing)
     return Check(
@@ -159,22 +169,25 @@ def check_processes() -> Check:
         status,
         detail,
         "process table",
-        "ps aux | rg 'hermes_cli.main gateway|dashboard --port 9119|openchronicle start|codegraph.js serve --mcp'",
+        "ps aux | rg 'hermes_cli.main gateway|hermes_cli.main dashboard|openchronicle start|codegraph.js serve --mcp'",
     )
 
 
 def check_ports() -> Check:
     ports = {
         "api_server": 8642,
-        "dashboard": 9119,
         "openchronicle": 8742,
         "clash_proxy": 7890,
     }
     states = {name: _can_connect("127.0.0.1", port) for name, port in ports.items()}
+    dashboard_open = [port for port in range(9120, 9200) if _can_connect("127.0.0.1", port, timeout=0.2)]
     missing = [f"{name}:{ports[name]}" for name, ok in states.items() if not ok and name != "clash_proxy"]
+    if not dashboard_open:
+        missing.append("dashboard:9120-9199")
     optional_missing = [f"{name}:{ports[name]}" for name, ok in states.items() if not ok and name == "clash_proxy"]
     status = "OK" if not missing else "WARN"
     detail = ", ".join(f"{name}:{ports[name]}={'open' if ok else 'closed'}" for name, ok in states.items())
+    detail += f", dashboard:{','.join(str(port) for port in dashboard_open) if dashboard_open else 'closed'}"
     if optional_missing:
         detail += "; optional closed: " + ", ".join(optional_missing)
     return Check(
@@ -182,7 +195,7 @@ def check_ports() -> Check:
         status,
         detail,
         "127.0.0.1 TCP connect",
-        "python socket.create_connection for 8642/9119/8742/7890",
+        "python socket.create_connection for 8642/8742/7890 and dashboard ports 9120-9199",
     )
 
 
@@ -221,19 +234,20 @@ def check_agents_and_models() -> list[Check]:
     agents_path = AGENT_ROOT / "configs" / "managed_agents" / "agents.yaml"
     mirror_path = ROOT / "config" / "managed-agents.yaml"
     models_path = ROOT / "config" / "models.yaml"
-    if not registry_path.exists() or not agents_path.exists() or not models_path.exists():
+    effective_agents_path = agents_path if agents_path.exists() else mirror_path
+    if not registry_path.exists() or not effective_agents_path.exists() or not models_path.exists():
         return [
             Check(
                 "Agent/model config",
                 "FAIL",
                 "one or more authoritative files are missing",
-                f"{registry_path}, {agents_path}, {models_path}",
+                f"{registry_path}, {agents_path} or {mirror_path}, {models_path}",
                 "test -f <path>",
             )
         ]
 
     registry = _load_json(registry_path)
-    agents_yaml = _load_yaml(agents_path)
+    agents_yaml = _load_yaml(effective_agents_path)
     models_yaml = _load_yaml(models_path)
     registry_agents = registry.get("agents") if isinstance(registry.get("agents"), dict) else {}
     yaml_agents_list = agents_yaml.get("agents") if isinstance(agents_yaml.get("agents"), list) else []
@@ -241,7 +255,17 @@ def check_agents_and_models() -> list[Check]:
     models = models_yaml.get("models") if isinstance(models_yaml.get("models"), dict) else {}
 
     checks: list[Check] = []
-    if mirror_path.exists():
+    if not agents_path.exists():
+        checks.append(
+            Check(
+                "Managed agents source",
+                "WARN",
+                "engineering source is missing; using config/managed-agents.yaml mirror fallback",
+                f"{agents_path} and {mirror_path}",
+                "sync config/managed-agents.yaml to hermes-agent/configs/managed_agents/agents.yaml",
+            )
+        )
+    elif mirror_path.exists():
         mirror_yaml = _load_yaml(mirror_path)
         mirror_agents_list = mirror_yaml.get("agents") if isinstance(mirror_yaml.get("agents"), list) else []
         mirror_agents = {str(a.get("agent_id")): a for a in mirror_agents_list if isinstance(a, dict)}
@@ -261,7 +285,7 @@ def check_agents_and_models() -> list[Check]:
                         + (f"; extra_in_mirror={extra_in_mirror}" if extra_in_mirror else "")
                     )
                 ),
-                f"{agents_path} and {mirror_path}",
+                f"{effective_agents_path} and {mirror_path}",
                 "cmp hermes-agent/configs/managed_agents/agents.yaml config/managed-agents.yaml",
             )
         )
@@ -271,7 +295,7 @@ def check_agents_and_models() -> list[Check]:
                 "Managed agents mirror",
                 "WARN",
                 "config/managed-agents.yaml mirror is missing; runtime source still exists",
-                f"{agents_path} and {mirror_path}",
+                f"{effective_agents_path} and {mirror_path}",
                 "cp hermes-agent/configs/managed_agents/agents.yaml config/managed-agents.yaml",
             )
         )
@@ -286,7 +310,7 @@ def check_agents_and_models() -> list[Check]:
                 + (f"; missing_in_yaml={missing_in_yaml}" if missing_in_yaml else "")
                 + (f"; missing_in_registry={missing_in_registry}" if missing_in_registry else "")
             ),
-            f"{registry_path} and {agents_path}",
+            f"{registry_path} and {effective_agents_path}",
             "python compare agent IDs in agent-registry.json and agents.yaml",
         )
     )
@@ -320,7 +344,7 @@ def check_agents_and_models() -> list[Check]:
             "Agent registry consistency",
             "OK" if not mismatches else "FAIL",
             "no field mismatches" if not mismatches else "mismatches: " + ", ".join(mismatches[:20]),
-            f"{registry_path} and {agents_path}",
+            f"{registry_path} and {effective_agents_path}",
             "compare model_ref/toolsets/skills/permission per agent",
         )
     )
@@ -333,7 +357,7 @@ def check_agents_and_models() -> list[Check]:
                 if not unknown_refs and not deprecated_refs
                 else f"unknown={unknown_refs}; deprecated={deprecated_refs}"
             ),
-            f"{agents_path} and {models_path}",
+            f"{effective_agents_path} and {models_path}",
             "resolve every agents.yaml model_ref in config/models.yaml",
         )
     )

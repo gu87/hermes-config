@@ -21,7 +21,7 @@ agents: [hermes]
 
 # Hermes 知识架构
 
-> 最后更新: 2026-05-21 (v9 — 增加 SOUL/Identity Document Upgrade Workflow)
+> 最后更新: 2026-06-04 (v10 — Ground Truth 层级写入 SOUL.md + Memory 审计方法 + 双写漂移陷阱)
 
 ### Session Context Recovery Protocol (会话超时恢复)
 
@@ -97,6 +97,9 @@ When the user confirms a new principle (e.g. Managed Agents framework, anti-patt
 - ❌ Don't write session-level narrative into SOUL.md — SOUL is for principles, not story
 - ❌ Don't create the Obsidian doc without updating index.md — it becomes invisible
 - ❌ Don't leave the reasoning only in conversation — it won't survive session expiry
+- ❌ **SOUL/MEMORY 双写漂移** — 当一条规则同时出现在 SOUL.md 和 MEMORY.md 中（如 Agent 编制、副作用操作规则、任务-工具匹配），MEMORY.md 的副本就是纯 token 浪费。SOUL 更新后必须检查 MEMORY 是否有冗余。如果 MEMORY 里的条目能被 SOUL.md 的某个章节完全覆盖 → 删除 MEMORY 条目，不留镜像。
+- ❌ **外部执行报告过度简化** — 当准备一份审计/分析报告给 Claude Code 或外部执行者时，**不要简化**。简化版丢失了证据链（「为什么这条要删」）、判断逻辑（「凭什么说它和 SOUL 重复」）和具体文件路径，外部执行者无法独立判断。正确的做法是保留完整的逐条分析、证据引用、判断逻辑和迁移理由。如果必须缩短，只在开头加 TL;DR，正文不裁。
+- ❌ **事件日志泄漏** — 不要把「某日做了什么变更」写进 MEMORY.md。这类条目（如 "2026-06-04: SOUL.md 新增 Ground Truth"）一周后就过期，违反 MEMORY 自身的「临时进展不写入长期记忆」规则。变更记录应留在 Obsidian wiki 或 session 日志中。MEMORY 只放 always-on 稳定事实，不含按日期标注的事件。
 - ✅ Do keep the Obsidian entry decision-focused: what was decided, when, by whom, and why. Not the full conversation transcript.
 - ✅ Do mark the decision as "已确认，锁定（不重新讨论）" when the user explicitly rules out re-debating it
 
@@ -425,12 +428,25 @@ Verify: `hermes -p <profile> --skills kanban-worker -z "hello"`
 
 ## 阶段性控制论梳理 Skill
 
+**触发条件扩展**（v10）：除原有触发外，以下信号也应触发一次 Memory 审计——
+- 用户问「记忆系统有什么问题」「我的 memory 用了这么久有没有问题」
+- 用户研究外部记忆方案后要求对比自身系统
+- Memory 占用超过 80% 且最近 2 周内有 5+ 次 SOUL.md 修改
+- **用户要求「做一次记忆系统快扫」或「进入 dogfood 观察期时需要基线扫描」**——此时运行 Quick Scan（六维度只读扫描），而非直接进入 Memory 逐条审计
+
 当一个阶段结束、完成明显工作量、用户提醒，或某个 skill 连续暴露偏差时，对相关 skill 做一次控制论反馈闭环：
 
 1. **检查漏洞 (Perception)** — 每个 skill 今天的调用是否报错？有没有遗漏的步骤或参数？
 2. **更新 (Comparison)** — 对比实际执行和 skill 描述，找出偏差（过时的命令、改版后的 API、新增的 flag）
-3. **去重 (Regulation)** — 两个 skill 是否覆盖同一类任务？合并或建立互相引用
+3. **去重 (Regulation)** — 两个 skill 是否覆盖同一类任务？合并或建立互相引用。**同时检查 MEMORY.md 与 SOUL.md 之间是否有重复条目**（Agent 编制、操作规则、工具路由常被双写）——SOUL 覆盖的规则从 MEMORY 删除。也检查 MEMORY 中是否有按日期标注的事件日志条目（违反「临时进展不进长期记忆」规则）——这类条目直接删除或迁至 Obsidian。
 4. **补缺 (Adaptation)** — 今天发现的新的 workflow 是否值得创建一个新 skill？还是加到现有 umbrella 下？
+
+**Memory 审计方法**（v10 新增）：
+1. 读 MEMORY.md → 逐条分类：「指针/硬约束/长期事实」(保留) vs 「procedure/环境配置/事件日志」(迁移) vs 「与 SOUL.md 重复」(删除)
+2. 输出审计表格：条目编号 + 问题类型 + 严重度 + 建议操作
+3. 用户确认后批量执行迁移/删除
+4. 审计结果写入 Obsidian：`3-知识/wiki/AI与Agent/Hermes/Memory审计-<日期>.md`
+5. 详见 `references/memory-os-analysis-and-audit-method.md`
 
 这个流程本身就是控制论的体现：感知→比较→调节→适应。
 
@@ -470,9 +486,94 @@ Verify: `hermes -p <profile> --skills kanban-worker -z "hello"`
 - 最后有「相关链接」段落
 - 索引用 `[[wikilink]]` 格式
 
+## Hermes 配置安全编辑
+
+> **问题**: 手工用 sed/Python 编辑 `~/.hermes/config.yaml` 容易破坏 YAML 结构，Gateway 检测到 corruption 后会**回滚到干净版本**并创建 `.corrupt.*.bak` 备份——之前的所有修改丢失。
+
+### 配置腐败检测与恢复
+
+Gateway 重启时会校验 config.yaml 的 YAML 结构。如果检测到 corruption：
+- 当前 config 被重命名为 `~/.hermes/config.yaml.corrupt.<timestamp>.bak`
+- Gateway 使用内置默认配置启动（无 MCP server、无自定义 routing）
+- **之前的所有配置修改全部丢失**
+
+**恢复步骤**：
+1. 列出 `.corrupt.*.bak` 文件：`ls -la ~/.hermes/config.yaml.corrupt.*.bak`
+2. 找到最大的（通常包含最多修改）：`ls -S ~/.hermes/config.yaml.corrupt.*.bak | head -1`
+3. 从中提取需要的配置段：`grep -A N "关键字" <bak_file>`
+4. 用安全方式重新写入（见下方推荐工作流）
+
+### API Key 写入时的工具截断问题
+
+Hermes 的工具系统会对 API key 做展示截断（替换为 `***`），**包括工具输入参数**——这意味着用 `echo`、`sed`、`python3 -c` 内联传递 key 时，key 会被截断为 `as_sk_...a81d`（13 字符的假 key）。
+
+**安全写入工作流**：
+```bash
+# 1. 将 key 写入临时文件（printf 可绕过截断）
+printf '%s' 'sk-xxxxxxxxxxxxxxxx' > /tmp/secret_key.txt
+# 验证长度
+wc -c /tmp/secret_key.txt
+
+# 2. Python 读取临时文件，用 yaml.safe_dump 写入 config
+python3 << 'PYEOF'
+import yaml
+with open('/tmp/secret_key.txt') as f:
+    real_key = f.read().strip()
+with open('/Users/gu/.hermes/config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+config['mcp_servers']['xxx']['env']['API_KEY'] = real_key
+with open('/Users/gu/.hermes/config.yaml', 'w') as f:
+    yaml.safe_dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+# 验证
+with open('/Users/gu/.hermes/config.yaml', 'r') as f:
+    v = yaml.safe_load(f)
+print(f"Key length: {len(v['mcp_servers']['xxx']['env']['API_KEY'])}")
+PYEOF
+```
+
+### `hermes config set` 已知限制
+
+| 场景 | 问题 | 解决方案 |
+|------|------|---------|
+| MCP server `args` | 存为 JSON 字符串 `'["arg1","arg2"]'` 而非 YAML 列表 | 用 Python `yaml.safe_load` + `json.loads` 修复 |
+| MCP server `env` 嵌套 key | `mcp_servers.xxx.env.KEY` 报 `Invalid environment variable name` | 用 Python yaml 直接写入 |
+| `--yaml` flag | 不支持 | 无 |
+
+### `hermes mcp add` 已知问题
+
+- 当 Gateway 运行时可能 timeout（等待 interactive confirmation）
+- `hermes mcp remove` 可能删除整个 `mcp_servers` 段而非单个 entry
+- `hermes mcp list` 仅在 MCP server 已正确注册时才有输出
+
+### 推荐的安全配置编辑流程
+
+1. **优先用 `hermes config set`** 设简单标量值（`enabled`、`command`）
+2. **对于列表/嵌套值**，用 Python `yaml.safe_load` → 修改 → `yaml.safe_dump` 全量写入
+3. **写入前备份**：`cp ~/.hermes/config.yaml ~/.hermes/config.yaml.bak.$(date +%Y%m%d-%H%M%S)`
+4. **写入后验证**：`python3 -c "import yaml; yaml.safe_load(open('/Users/gu/.hermes/config.yaml'))"`（不报错即合法）
+
+### 两个 `.Hermes` 目录
+
+| 目录 | 用途 |
+|------|------|
+| `~/.hermes/` | 运行时配置（config.yaml, .env, skills/, cron/） |
+| `~/.Hermes/hermes-agent/` | 源代码（Gateway 从这里启动，但读取 `~/.hermes/config.yaml`） |
+
+Gateway 进程的二进制路径可能指向 source checkout，但它的配置读取始终走 `~/.hermes/`。
+
+### `hermes gateway restart` 限制
+
+从 Gateway 内部（飞书会话中）执行 `hermes gateway restart` 会被拦截：
+```
+✗ Refusing to restart the gateway from inside the gateway process.
+```
+**解决**：从外部 shell 执行，或 `kill $(lsof -ti :8642)` 后用 `nohup ... gateway run --replace &` 重启。
+
 ## 参考文件
 
+- **[references/memory-system-quick-scan.md](references/memory-system-quick-scan.md)** — Hermes Memory System Quick Scan 模板，跨 6 维度只读诊断。创建于 dogfood 观察期基线，用于重复扫描和漂移检测。
 - For the full migration example, see the session transcript for 2026-05-05 — "Memory 快满了" → created `系统环境配置.md`, freed 1,200+ chars in memory.
+- **[references/memory-os-analysis-and-audit-method.md](references/memory-os-analysis-and-audit-method.md)** — ClaudioDrews/memory-os 7 层架构分析、可直接吸收的设计模式（Ground Truth 层级）、Memory 审计方法四步流程、2026-06-04 审计发现。触发 Memory 审计时先读此文件。
 - **[references/2026-05-06-cli-tool-inventory-and-patterns.md](references/2026-05-06-cli-tool-inventory-and-patterns.md)** — Full CLI tool audit: tools I was underusing (lark-cli, gh, tesseract, jq, hermes doctor/insights/logs), correct usage patterns, and iCloud deadlock workaround. Read this for "before going manual, check CLI tools" principle.
 - **[references/2026-05-15-agent-scoped-skills-implementation-pitfalls.md](references/2026-05-15-agent-scoped-skills-implementation-pitfalls.md)** — Batch SKILL.md frontmatter modification pitfalls: safe vs unsafe patterns for YAML frontmatter editing, JSON modification strategy, multi-repo management.
 - **[references/2026-05-15-mcp-audit-workflow.md](references/2026-05-15-mcp-audit-workflow.md)** — Full-system MCP inventory audit: how to check Hermes/Claude Code/DeepSeek TUI/npm/uv/pip for all MCP servers, version checking, and cleanup.

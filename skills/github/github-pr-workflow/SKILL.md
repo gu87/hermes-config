@@ -123,6 +123,8 @@ git push -u origin HEAD
 
 ### Create the PR
 
+For PRs that introduce new features, subsystems, or significant changes, use the structured 7-section template in `references/pr-description-template.md`. For small fixes, a simple summary + test plan suffices.
+
 **With gh:**
 
 ```bash
@@ -139,6 +141,37 @@ Closes #42"
 ```
 
 Options: `--draft`, `--reviewer user1,user2`, `--label "enhancement"`, `--base develop`
+
+**Fork PR (cross-repo):** When contributing from a fork to the upstream repo:
+
+```bash
+gh pr create \
+  --repo upstream-owner/upstream-repo \
+  --head your-fork:feature-branch \
+  --base main \
+  --title "feat: ..." \
+  --body "..."
+```
+
+The `--repo` flag targets the upstream repo; `--head` specifies your fork and branch.
+
+**Shell quoting for multi-line `--body`:** When the PR body contains single quotes (e.g., `don't`, `user's`, `it's`), use `'\\''` to escape within single-quoted strings, or use a heredoc/file:
+
+```bash
+# Option A: Write body to a temp file, then use it
+cat > /tmp/pr-body.md << 'ENDOFBODY'
+## 1. Summary
+...
+ENDOFBODY
+gh pr create --title "..." --body-file /tmp/pr-body.md
+```
+
+```bash
+# Option B: Escaped single quotes (compact but harder to read)
+gh pr create --title "feat: ..." --body '... user'\''s existing proxy chain ...'
+```
+
+Prefer Option A (temp file) when the body is long or contains many special characters. The `--body-file` flag avoids all escaping issues.
 
 **With git + curl:**
 

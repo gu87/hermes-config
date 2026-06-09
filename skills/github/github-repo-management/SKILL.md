@@ -541,6 +541,26 @@ for g in json.load(sys.stdin):
     print(f\"  {g['id']}  {g['description'] or '(no desc)':40}  {files}\")"
 ```
 
+## 11. Remote Audit + Rename
+
+When remotes are misconfigured (e.g., `origin` points to the wrong fork), a zero-risk rename is available. See `references/git-remote-audit-and-rename.md` for the full audit checklist, rename procedure, and pre-push confirmation flow.
+
+Key points:
+- `git remote rename` is a local label change — no network, no data movement
+- Always run the audit checklist before ANY remote change
+- For multi-repo setups, audit all repos before touching any
+
+## 12. Dirty Worktree Audit
+
+Before committing after a multi-feature work session, run a systematic read-only audit. See `references/dirty-worktree-audit.md` for the full methodology:
+
+- Group modified/untracked files by feature, not by directory
+- Flag dangers: `__pycache__/`, root PNGs, cross-feature hunks, credential leaks
+- Assign risk levels and recommendations per group
+- Output a numbered processing order
+
+This is especially important when `executors/`, screenshots, or large untracked doc directories have accumulated alongside functional code changes.
+
 ## Quick Reference Table
 
 | Action | gh | git + curl |

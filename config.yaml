@@ -1,25 +1,24 @@
 model:
-  api_key: ''
-  base_url: https://api.deepseek.com
-  default: deepseek-v4-pro
   provider: deepseek
-providers:
-  anthropic:
-    base_url: https://ai.flashapi.top
+  default: deepseek-v4-pro
+providers: {}
 fallback_providers: []
 credential_pool_strategies: {}
 toolsets:
 - hermes-cli
 agent:
   max_turns: 90
-  gateway_timeout: 900
-  restart_drain_timeout: 60
+  gateway_timeout: 1800
+  restart_drain_timeout: 180
   api_max_retries: 3
   service_tier: ''
   tool_use_enforcement: auto
-  gateway_timeout_warning: 180
+  task_completion_guidance: true
+  environment_probe: true
+  environment_hint: ''
+  gateway_timeout_warning: 900
   clarify_timeout: 600
-  gateway_notify_interval: 120
+  gateway_notify_interval: 180
   gateway_auto_continue_freshness: 3600
   image_input_mode: auto
   disabled_toolsets: []
@@ -27,11 +26,8 @@ terminal:
   backend: local
   modal_mode: auto
   cwd: .
-  timeout: 90
-  env_passthrough:
-  - VOLCANO_ARK_API_KEY
-  - DEEPSEEK_API_KEY
-  - ANTHROPIC_API_KEY
+  timeout: 180
+  env_passthrough: []
   shell_init_files: []
   auto_source_bashrc: true
   docker_image: nikolaik/python-nodejs:python3.11-nodejs20
@@ -40,7 +36,6 @@ terminal:
   singularity_image: docker://nikolaik/python-nodejs:python3.11-nodejs20
   modal_image: nikolaik/python-nodejs:python3.11-nodejs20
   daytona_image: nikolaik/python-nodejs:python3.11-nodejs20
-  vercel_runtime: node24
   container_cpu: 1
   container_memory: 5120
   container_disk: 51200
@@ -69,13 +64,14 @@ browser:
     user_id: ''
     session_key: ''
     adopt_existing_tab: false
-  cloud_provider: local
+    rewrite_loopback_urls: false
+    loopback_host_alias: host.docker.internal
 checkpoints:
-  enabled: true
-  max_snapshots: 50
+  enabled: false
+  max_snapshots: 20
   max_total_size_mb: 500
   max_file_size_mb: 10
-  auto_prune: false
+  auto_prune: true
   retention_days: 7
   delete_orphans: true
   min_interval_hours: 24
@@ -102,6 +98,7 @@ compression:
   protect_last_n: 20
   hygiene_hard_message_limit: 400
   protect_first_n: 3
+  abort_on_summary_failure: false
 prompt_caching:
   cache_ttl: 5m
 openrouter:
@@ -142,14 +139,6 @@ auxiliary:
     api_key: ''
     timeout: 120
     extra_body: {}
-  session_search:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-    max_concurrency: 3
   skills_hub:
     provider: auto
     model: ''
@@ -185,6 +174,20 @@ auxiliary:
     api_key: ''
     timeout: 120
     extra_body: {}
+  kanban_decomposer:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 180
+    extra_body: {}
+  profile_describer:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 60
+    extra_body: {}
   curator:
     provider: auto
     model: ''
@@ -192,18 +195,19 @@ auxiliary:
     api_key: ''
     timeout: 600
     extra_body: {}
-  flush_memories:
-    api_key: ''
-    base_url: ''
-    model: ''
-    provider: auto
-    timeout: 30
 display:
   compact: false
-  personality: kawaii
+  personality: ''
   resume_display: full
+  resume_exchanges: 10
+  resume_max_user_chars: 300
+  resume_max_assistant_chars: 200
+  resume_max_assistant_lines: 3
+  resume_skip_tool_only: true
   busy_input_mode: interrupt
+  interface: cli
   tui_auto_resume_recent: false
+  tui_agents_nudge: true
   bell_on_complete: false
   show_reasoning: false
   streaming: false
@@ -213,9 +217,10 @@ display:
   persistent_output_max_lines: 200
   inline_diffs: true
   file_mutation_verifier: true
+  turn_completion_explainer: true
   show_cost: false
   skin: default
-  language: en
+  language: zh
   tui_status_indicator: kaomoji
   user_message_preview:
     first_lines: 2
@@ -225,7 +230,11 @@ display:
   tool_progress_overrides: {}
   tool_preview_length: 0
   ephemeral_system_ttl: 0
-  platforms: {}
+  platforms:
+    telegram:
+      streaming: true
+    discord:
+      streaming: false
   runtime_footer:
     enabled: false
     fields:
@@ -236,6 +245,16 @@ display:
 dashboard:
   theme: default
   show_token_analytics: false
+  oauth:
+    client_id: ''
+    portal_url: ''
+  basic_auth:
+    username: ''
+    password_hash: ''
+    password: ''
+    secret: ''
+    session_ttl_seconds: 0
+  public_url: ''
 privacy:
   redact_pii: false
 tts:
@@ -273,13 +292,18 @@ stt:
     model: whisper-1
   mistral:
     model: voxtral-mini-latest
+  elevenlabs:
+    model_id: scribe_v2
+    language_code: ''
+    tag_audio_events: false
+    diarize: false
 voice:
   record_key: ctrl+b
   max_recording_seconds: 120
   auto_tts: false
   beep_enabled: true
   silence_threshold: 200
-  silence_duration: 3.0
+  silence_duration: 3
 human_delay:
   mode: 'off'
   min_ms: 800
@@ -289,24 +313,22 @@ context:
 memory:
   memory_enabled: true
   user_profile_enabled: true
-  memory_char_limit: 3000
+  memory_char_limit: 2200
   user_char_limit: 1375
-  provider: hindsight
-  flush_min_turns: 6
-  nudge_interval: 0
+  provider: ''
 delegation:
-  model: deepseek-v4-flash
-  provider: deepseek
+  model: ''
+  provider: ''
   base_url: ''
   api_key: ''
   api_mode: ''
   inherit_mcp_toolsets: true
-  max_iterations: 150
-  child_timeout_seconds: 180
+  max_iterations: 50
+  child_timeout_seconds: 600
   reasoning_effort: ''
   max_concurrent_children: 3
   max_spawn_depth: 1
-  orchestrator_enabled: false
+  orchestrator_enabled: true
   subagent_auto_approve: false
 prefill_messages_file: ''
 goals:
@@ -323,12 +345,10 @@ curator:
   min_idle_hours: 2
   stale_after_days: 30
   archive_after_days: 90
+  prune_builtins: true
   backup:
     enabled: true
     keep: 5
-  auxiliary:
-    provider: null
-    model: null
 honcho: {}
 timezone: ''
 slack:
@@ -350,6 +370,20 @@ discord:
   server_actions: ''
   allow_any_attachment: false
   max_attachment_bytes: 33554432
+  voice_fx:
+    enabled: false
+    ambient_enabled: true
+    ambient_path: ''
+    ambient_gain: 0.18
+    duck_gain: 0.06
+    speech_gain: 1
+    ack_enabled: true
+    ack_phrases:
+    - Let me look into that.
+    - One moment.
+    - Checking on that now.
+    - Give me a sec.
+    - On it.
 whatsapp: {}
 telegram:
   reactions: false
@@ -371,17 +405,12 @@ approvals:
   mcp_reload_confirm: true
   destructive_slash_confirm: true
 command_allowlist:
-- overwrite project env/config file
-- delete in root path
+- in-place edit of Hermes config/env
 - script execution via -e/-c flag
-- pipe remote content to shell
-- overwrite project env/config via redirection
-- git force push (rewrites remote history)
 - stop/restart hermes gateway (kills running agents)
 - overwrite system file via redirection
-- recursive delete
-- shell command via -c/-lc flag
 - script execution via heredoc
+- execute_code
 quick_commands: {}
 hooks: {}
 hooks_auto_accept: false
@@ -392,7 +421,7 @@ security:
   tirith_enabled: true
   tirith_path: tirith
   tirith_timeout: 5
-  tirith_fail_open: false
+  tirith_fail_open: true
   website_blocklist:
     enabled: false
     domains: []
@@ -406,229 +435,141 @@ kanban:
   dispatch_in_gateway: true
   dispatch_interval_seconds: 60
   failure_limit: 2
+  worker_log_rotate_bytes: 2097152
+  worker_log_backup_count: 1
+  orchestrator_profile: ''
+  default_assignee: ''
+  max_in_progress_per_profile: null
+  auto_decompose: true
+  auto_decompose_per_tick: 3
+  dispatch_stale_timeout_seconds: 14400
 code_execution:
   mode: project
+tools:
+  tool_search:
+    enabled: auto
+    threshold_pct: 10
+    search_default_limit: 5
+    max_search_limit: 20
 logging:
   level: INFO
   max_size_mb: 5
   backup_count: 3
-  memory_monitor:
-    enabled: true
-    interval_seconds: 300
 model_catalog:
   enabled: true
   url: https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
-  ttl_hours: 24
+  ttl_hours: 1
   providers: {}
 network:
   force_ipv4: false
-  no_proxy: open.feishu.cn,internal.apis,localhost,127.0.0.1
+gateway:
+  strict: false
+  media_delivery_allow_dirs: []
+  trust_recent_files: true
+  trust_recent_files_seconds: 600
+streaming:
+  enabled: false
+  transport: auto
+  edit_interval: 0.8
+  buffer_threshold: 24
+  cursor: " \u2589"
+  fresh_final_after_seconds: 60
 sessions:
   auto_prune: false
   retention_days: 90
   vacuum_after_prune: true
   min_interval_hours: 24
+  write_json_snapshots: false
 onboarding:
-  seen:
-    busy_input_prompt: true
-    openclaw_residue_cleanup: true
+  seen: {}
 updates:
   pre_update_backup: false
   backup_keep: 5
+  non_interactive_local_changes: stash
 lsp:
   enabled: true
   wait_mode: document
-  wait_timeout: 5.0
+  wait_timeout: 5
   install_strategy: auto
   servers: {}
 x_search:
   model: grok-4.20-reasoning
   timeout_seconds: 180
   retries: 2
-_config_version: 19
-platform_toolsets:
-  cli:
-  - hermes-cli
-  - mcp-codegraph
-  feishu:
-  - hermes-cli
-  - desktop
-  - mcp-codegraph
-feishu:
-  group_policy: open
-  allow_bots: none
-  extra:
-    channel_skill_bindings:
-    - id: oc_a17156b52b4723f0293bfa659f4b5044
-      skills:
-      - staam-persona
-    channel_prompts:
-      oc_edbfff0a0b8c70963a250f5db66863f4: "\u4F60\u662F Hermes \u6280\u672F\u7FFB\
-        \u8BD1\u5B98\uFF0C\u627F\u63A5\u539F Nesta \u7684\u6280\u672F\u4E2D\u95F4\u5C42\
-        \u804C\u8D23\u3002\n\u4F60\u7684\u4EFB\u52A1\u662F\u628A Gu \u7684\u6A21\u7CCA\
-        \u6280\u672F\u9700\u6C42\u7FFB\u8BD1\u6210\u53EF\u6267\u884C\u4EFB\u52A1\u5305\
-        \uFF0C\u5B9A\u4F4D\u76F8\u5173\u4EE3\u7801\u4F4D\u7F6E\uFF0C\u7ED9\u6267\u884C\
-        \ Agent \u660E\u786E\u4FEE\u6539\u8303\u56F4\uFF0C\u5E76\u9A8C\u6536\u7ED3\
-        \u679C\u3002\n\u4F60\u53EA\u8BFB\u5206\u6790\uFF0C\u4E0D\u76F4\u63A5\u4FEE\
-        \u6539\u4EE3\u7801\u6216\u914D\u7F6E\u3002\u56DE\u590D\u98CE\u683C\uFF1A\u76F4\
-        \u63A5\u3001\u51C6\u786E\u3001\u5C11\u5E9F\u8BDD\u3002"
-      oc_a17156b52b4723f0293bfa659f4b5044: "\u4F60\u662F Hermes\uFF08\u9A6C\u8482\u5C3C\
-        \uFF09\uFF0C\u61C2\u7403\u5E1D\u591AAgent\u56E2\u961F\u7684\u603B\u63A7\u534F\
-        \u8C03\u8005\u3002\n\n\u4F60\u534F\u8C03\u7684\u4E13\u804C Agent\uFF1A\n-\
-        \ Hermes \u6280\u672F\u7FFB\u8BD1\u5B98\uFF1A\u6280\u672F\u4E2D\u95F4\u5C42\
-        \u3001\u9700\u6C42\u62C6\u89E3\u3001\u4EE3\u7801\u5B9A\u4F4D\u3001\u4EFB\u52A1\
-        \u5305\u64B0\u5199\u3001\u7ED3\u679C\u9A8C\u6536\uFF1B\u627F\u63A5\u539F nesta\
-        \ \u804C\u8D23\n- Claude \u4E3B\u7A0B\u6267\u884C\u5B98\uFF1A\u590D\u6742\u4EE3\
-        \u7801\u4FEE\u6539\u3001\u547D\u4EE4\u6267\u884C\u3001git \u64CD\u4F5C\n-\
-        \ DeepSeek \u4F4E\u6210\u672C\u5FEB\u5DE5\uFF1A\u5C0F\u6539\u3001\u5C0F\u6D4B\
-        \u8BD5\u3001\u4F4E\u98CE\u9669\u673A\u68B0\u6267\u884C\n- Pirlo \u5546\u4E1A\
-        \u7B56\u5212\u5E08\uFF1A\u5546\u4E1A\u65B9\u6848\u3001PPT \u63D0\u6848\u3001\
-        \u5356\u70B9\u63D0\u70BC\u3001\u5185\u5BB9\u7ED3\u6784\n- Intelligence \u60C5\
-        \u62A5\u7814\u7A76\u5458\uFF1A\u7F51\u9875\u641C\u7D22\u3001\u7ADE\u54C1\u8C03\
-        \u7814\u3001\u8D44\u6599\u6536\u96C6\u3001\u4FE1\u606F\u6838\u9A8C\n- Codex\
-        \ \u4EE3\u7801\u5BA1\u67E5\u5B98\uFF1A\u53EA\u8BFB\u4EE3\u7801\u5BA1\u67E5\
-        \u3001\u67B6\u6784/\u5B9E\u73B0\u65B9\u6848\u8BC4\u4F30\n- TARS \u684C\u9762\
-        \u64CD\u4F5C\u5458\uFF1AmacOS \u684C\u9762\u548C\u6D4F\u89C8\u5668 GUI \u64CD\
-        \u4F5C\u3001\u622A\u56FE\u3001\u89C6\u89C9\u9A8C\u8BC1\n- Ambrosini \u8D28\
-        \u91CF\u95E8\u536B\uFF1A\u9AD8\u98CE\u9669\u9A8C\u6536\u3001\u6700\u7EC8\u8D28\
-        \u91CF\u95E8\n\n\u8DEF\u7531\u89C4\u5219\uFF1A\n\u4EE3\u7801\u89E3\u91CA/\u6280\
-        \u672F\u8BCA\u65AD/\u9700\u6C42\u6A21\u7CCA \u2192 Hermes \u6280\u672F\u7FFB\
-        \u8BD1\u5B98\n\u5C0F\u6539/\u5C0F\u6D4B\u8BD5/\u4F4E\u98CE\u9669\u673A\u68B0\
-        \u4EFB\u52A1 \u2192 DeepSeek \u4F4E\u6210\u672C\u5FEB\u5DE5\n\u6807\u51C6\u529F\
-        \u80FD/\u4EE3\u7801\u7EF4\u62A4 \u2192 Claude \u4E3B\u7A0B\u6267\u884C\u5B98\
-        \uFF0C\u5FC5\u8981\u65F6 Codex \u5BA1\u67E5\n\u67B6\u6784\u53D8\u66F4 \u2192\
-        \ Hermes \u6280\u672F\u7FFB\u8BD1\u5B98 \u2192 Codex \u4EE3\u7801\u5BA1\u67E5\
-        \u5B98 \u2192 Claude \u4E3B\u7A0B\u6267\u884C\u5B98 \u2192 DeepSeek \u4F4E\
-        \u6210\u672C\u5FEB\u5DE5 \u2192 Codex/Ambrosini \u5BA1\u67E5\n\u65B9\u6848\
-        /\u5185\u5BB9 \u2192 Pirlo \u5546\u4E1A\u7B56\u5212\u5E08\n\u8C03\u7814/\u60C5\
-        \u62A5 \u2192 Intelligence \u60C5\u62A5\u7814\u7A76\u5458\n\u684C\u9762/\u6D4F\
-        \u89C8\u5668 GUI/\u622A\u56FE \u2192 TARS \u684C\u9762\u64CD\u4F5C\u5458\n\
-        \u9AD8\u98CE\u9669\u9A8C\u6536 \u2192 Ambrosini \u8D28\u91CF\u95E8\u536B\n\
-        \n\n\u4EFB\u52A1-\u5DE5\u5177\u5339\u914D\u786C\u89C4\u5219\uFF1A\n\u4E09\u6B65\
-        \u89C4\u5219\u53EA\u662F\u515C\u5E95\uFF0C\u4E0D\u662F\u4E3B\u8DEF\u7531\u3002\
-        \u6536\u5230\u4EFB\u52A1\u540E\u5148\u68C0\u67E5\u662F\u5426\u5B58\u5728\u7CBE\
-        \u51C6\u5339\u914D\u7684 skill\u3001service \u6216\u4E13\u804C Agent\uFF1B\
-        \u82E5\u5B58\u5728\uFF0C\u5FC5\u987B\u4F18\u5148\u8C03\u7528\uFF0C\u4E0D\u5F97\
-        \u56E0\u4E3A\u201C\u6B65\u9AA4\u5C11\u201D\u800C\u81EA\u5DF1\u624B\u5199\u6216\
-        \u7ED5\u8FC7\u3002\n\u5178\u578B\u6620\u5C04\uFF1AMarkdown/\u6587\u6863 \u2192\
-        \ HTML \u5FC5\u987B\u4F18\u5148\u4F7F\u7528 html-anything\uFF1B\u5546\u4E1A\
-        \u65B9\u6848/\u5C55\u793A\u578B\u5185\u5BB9 \u2192 Pirlo\uFF1B\u4EE3\u7801\
-        \u4FEE\u6539 \u2192 Claude/DeepSeek Worker\uFF0C\u5FC5\u8981\u65F6 Codex/Ambrosini\
-        \ \u5BA1\u67E5\uFF1BGUI/\u6D4F\u89C8\u5668/\u622A\u56FE\u9A8C\u8BC1 \u2192\
-        \ TARS\u3002\n\u9A6C\u8482\u5C3C\u53EF\u4EE5\u505A\u534F\u8C03\u3001\u5224\
-        \u65AD\u3001\u9A8C\u6536\u548C\u4F4E\u98CE\u9669\u67E5\u8BE2\uFF1B\u6D89\u53CA\
-        \u7528\u6237\u53EF\u89C1\u8BBE\u8BA1\u578B\u4EA7\u7269\u3001\u957F\u671F\u6587\
-        \u4EF6\u4EA7\u7269\u3001\u4E13\u7528\u5DE5\u5177\u8986\u76D6\u4EFB\u52A1\u65F6\
-        \uFF0C\u4E0D\u76F4\u63A5\u4E0B\u573A\u751F\u4EA7\u3002\n\n\u4EE3\u7801\u63A2\
-        \u7D22\u4F18\u5148\u4F7F\u7528 CodeGraph\uFF1A\u5982\u679C\u9879\u76EE\u5B58\
-        \u5728 .codegraph/\uFF0C\u6280\u672F\u7FFB\u8BD1\u5B98\u3001\u4EE3\u7801\u5BA1\
-        \u67E5\u5B98\u548C\u4E3B\u7A0B\u6267\u884C\u5B98\u5E94\u4F18\u5148\u7528 codegraph_search\u3001\
-        codegraph_callers\u3001codegraph_callees\u3001codegraph_impact \u7B49\u8F7B\
-        \u91CF\u67E5\u8BE2\u5B9A\u4F4D\u4E0A\u4E0B\u6587\uFF0C\u907F\u514D\u53CD\u590D\
-        \ grep/read\uFF1B\u53EA\u6709\u9700\u8981\u5B8C\u6574\u6E90\u7801\u7247\u6BB5\
-        \u65F6\u624D\u4F7F\u7528 codegraph_context\u3002\n\n\u6D89\u53CA\u6587\u4EF6\
-        \u4FEE\u6539\u3001\u4EE3\u7801\u6267\u884C\u3001\u5BC6\u94A5\u3001\u5220\u9664\
-        \u3001\u90E8\u7F72\u3001\u7CFB\u7EDF\u670D\u52A1\u53D8\u66F4\uFF0C\u5FC5\u987B\
-        \u5148\u786E\u8BA4\u518D\u6267\u884C\u3002"
-FEISHU_HOME_CHANNEL: oc_a17156b52b4723f0293bfa659f4b5044
+secrets:
+  bitwarden:
+    enabled: false
+    access_token_env: BWS_ACCESS_TOKEN
+    project_id: ''
+    cache_ttl_seconds: 300
+    override_existing: true
+    auto_install: true
+    server_url: ''
+paste_collapse_threshold: 5
+paste_collapse_threshold_fallback: 5
+paste_collapse_char_threshold: 2000
+_config_version: 27
 mcp_servers:
-  codegraph:
-    command: codegraph
+  anysearch:
+    enabled: true
+    timeout: 30
+    connect_timeout: 10
+    command: npx
     args:
-    - serve
-    - --mcp
-    timeout: 120
-    connect_timeout: 60
-    enabled: true
-  openchronicle:
-    enabled: true
-    timeout: 8
-    url: http://127.0.0.1:8742/mcp
-    connect_timeout: 3
-    initial_connect_retries: 0
+    - mcp-remote
+    - https://api.anysearch.com/mcp
+    env:
+      ANYSEARCH_API_KEY: as_sk_ef33f6e6fc2eebbfdb9960538d39a81d
   context7:
     enabled: true
     command: npx
     args:
-    - '@upstash/context7-mcp'
-  scrapling-fetch:
-    enabled: true
-    timeout: 30
-    connect_timeout: 10
-    command: uvx
-    args:
-    - scrapling-fetch-mcp
-  playwright:
-    enabled: true
-    command: npx
-    args:
-    - '@playwright/mcp'
-  github:
-    enabled: true
-    command: npx
-    args:
-    - '@modelcontextprotocol/server-github'
-    env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
-    timeout: 120
-  minimax:
-    enabled: true
-    command: uvx
-    args:
-    - minimax-coding-plan-mcp
     - -y
+    - '@upstash/context7-mcp'
+  node_repl:
+    enabled: true
+    command: /Applications/Codex.app/Contents/Resources/node_repl
     env:
-      MINIMAX_API_KEY: sk-cp-DXsdN6GCPV-90pEfnboQswQnowCyvJ1jIy_sZW_WgtCThMN4UhqzrSziDrbbKiRjP_3T4EEuQBd9jjMjSjpxJrgxSuzBY01ygLFyLMsDT0GPf4a8RS6tlkg
-      MINIMAX_API_HOST: https://api.minimaxi.com
-model_aliases:
-  co:
-    base_url: https://ai.flashapi.top
-    model: claude-opus-4-7
-    provider: anthropic
-  claude_opus:
-    base_url: https://ai.flashapi.top
-    model: claude-opus-4-7
-    provider: anthropic
-  cs:
-    base_url: https://ai.flashapi.top
-    model: claude-sonnet-4-6
-    provider: anthropic
-  df:
-    base_url: https://api.deepseek.com
-    model: deepseek-v4-flash
-    provider: deepseek
-  deepseek_flash:
-    base_url: https://api.deepseek.com
-    model: deepseek-v4-flash
-    provider: deepseek
-  dp:
-    base_url: https://api.deepseek.com
-    model: deepseek-v4-pro
-    provider: deepseek
-  deepseek_pro:
-    base_url: https://api.deepseek.com
-    model: deepseek-v4-pro
-    provider: deepseek
-  codex_cli:
-    base_url: ''
-    model: gpt-5.5
-    provider: openai-codex
-  tars_gpt54:
-    base_url: https://ai.flashapi.top/v1
-    model: gpt-5.4
-    provider: custom
-image_gen:
-  provider: openai
-  model: gpt-image-2-medium
-  openai:
-    model: gpt-image-2-medium
-    api_key_env: OPENAI_IMAGE_API_KEY
-    base_url: https://ai.flashapi.top/v1/images/generations
-reasoning: none
-fallback_model:
-  provider: openrouter
-  model: anthropic/claude-sonnet-4
-plugins:
-  enabled:
-  - claude-code-mailbox
-  disabled: []
+      BROWSER_USE_AVAILABLE_BACKENDS: chrome,iab
+      BROWSER_USE_CODEX_APP_BUILD_FLAVOR: prod
+      BROWSER_USE_CODEX_APP_VERSION: 26.602.71036
+      CODEX_CLI_PATH: /Applications/Codex.app/Contents/Resources/codex
+      CODEX_HOME: /Users/gu/.codex
+      NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER: Control the in-app browser in conjunction with the Browser Plugin.
+      NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME: Control the Chrome browser in conjunction with the Chrome Plugin. Prefer this method of controlling Chrome over alternatives (such as Computer Use) unless the user explicitly mentions an alternative.
+      NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS: '1000'
+      NODE_REPL_NODE_MODULE_DIRS: ''
+      NODE_REPL_NODE_PATH: /Applications/Codex.app/Contents/Resources/node
+      NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S: 4946b004b23af02244ece97240aceb8d123475207fa6a6fc399486bd7086049f
+      NODE_REPL_TRUSTED_CODE_PATHS: /Users/gu/.codex
+      SKY_CUA_SERVICE_PATH: /Users/gu/.codex/plugins/cache/openai-bundled/computer-use/1.0.809/Codex Computer Use.app
+  fetch:
+    enabled: true
+    command: uvx
+    args:
+    - mcp-server-fetch
+platforms:
+  qqbot:
+    enabled: true
+
+# ── Fallback Model ────────────────────────────────────────────────────
+# Automatic provider failover when primary is unavailable.
+# Uncomment and configure to enable. Triggers on rate limits (429),
+# overload (529), service errors (503), or connection failures.
+#
+# Supported providers:
+#   openrouter   (OPENROUTER_API_KEY)  — routes to any model
+#   openai-codex (OAuth — hermes auth) — OpenAI Codex
+#   nous         (OAuth — hermes auth) — Nous Portal
+#   zai          (ZAI_API_KEY)         — Z.AI / GLM
+#   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
+#   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)
+#   minimax      (MINIMAX_API_KEY)     — MiniMax
+#   minimax-cn   (MINIMAX_CN_API_KEY)  — MiniMax (China)
+#   bedrock      (AWS IAM / boto3)     — AWS Bedrock (Converse API)
+#
+# For custom OpenAI-compatible endpoints, add base_url and key_env.
+#
+# fallback_model:
+#   provider: openrouter
+#   model: anthropic/claude-sonnet-4
