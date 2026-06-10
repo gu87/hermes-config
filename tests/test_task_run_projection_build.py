@@ -956,3 +956,105 @@ class TestBuilderRealStructureDedup:
             assert event_type_counts.get(et, 0) <= 1, (
                 f"{et} appears {event_type_counts.get(et, 0)} times, expected ≤1"
             )
+
+
+# ============================================================================
+# 15.  Phase 2B — Delegation Builder CLI Wrapper Tests
+# ============================================================================
+
+DELEG_STARTED = {
+    "schema_version": "delegate_v1", "phase": "run_started",
+    "parent_session_id": "uuid-S0", "delegate_call_id": "toolu_abc",
+    "task_index": 0, "subagent_session_id": "uuid-S1",
+    "parent_delegate_task_id": None, "parent_delegate_run_id": None,
+    "root_task_id": None, "depth": 1, "role": "leaf",
+    "goal": "CLI wrapper test", "toolsets": ["read"],
+    "model": "claude-sonnet-4-6",
+    "started_at": "2026-06-10T15:00:00.000000+00:00",
+}
+
+DELEG_TERMINAL = {
+    "schema_version": "delegate_v1", "phase": "run_finished",
+    "parent_session_id": "uuid-S0", "delegate_call_id": "toolu_abc",
+    "task_index": 0, "subagent_session_id": "uuid-S1",
+    "parent_delegate_task_id": None, "parent_delegate_run_id": None,
+    "root_task_id": None, "depth": 1,
+    "status": "completed", "summary": "Done", "exit_reason": "completed",
+    "api_calls": 5, "duration_seconds": 10.5,
+    "tokens": {"input": 100, "output": 50}, "cost_usd": 0.01,
+    "tool_trace": [], "files_written": [], "files_read": [],
+    "error": None, "ended_at": "2026-06-10T15:00:10.000000+00:00",
+}
+
+
+class TestDelegationCLI:
+    """CLI wrapper tests exercising the --delegation flag through main()."""
+
+    def test_delegation_flag_with_data(self, team_dir, tmp_path):
+        """--delegation with a populated journal dir produces output."""
+        deleg_dir = tmp_path / "delegations"
+        deleg_dir.mkdir()
+        (deleg_dir / "uuid-S0.jsonl").write_text(
+            json.dumps(DELEG_STARTED) + "\n" + json.dumps(DELEG_TERMINAL) + "\n"
+        )
+        out = tmp_path / "out.jsonl"
+        rc = _build.main([
+            "--project", "staam",
+            "--team-dir", str(team_dir),
+            "--delegation",
+            "--delegations-dir", str(deleg_dir),
+            "--delegation-output", str(out),
+        ])
+        assert rc == 0
+        assert out.exists()
+        lines = out.read_text().strip().splitlines()
+        assert len(lines) > 0
+
+    def test_delegation_flag_empty_dir(self, team_dir, tmp_path):
+        """--delegation with an empty delegations dir produces empty output."""
+        deleg_dir = tmp_path / "empty_deleg"
+        deleg_dir.mkdir()
+        out = tmp_path / "out.jsonl"
+        rc = _build.main([
+            "--project", "staam",
+            "--team-dir", str(team_dir),
+            "--delegation",
+            "--delegations-dir", str(deleg_dir),
+            "--delegation-output", str(out),
+        ])
+        assert rc == 0
+        # Empty dir → 0 records written
+        lines = [l for l in out.read_text().strip().splitlines() if l.strip()] if out.exists() else []
+        assert len(lines) == 0
+
+    def test_without_delegation_flag_pipeline_unchanged(self, team_with_data, tmp_path):
+        """Without --delegation flag, Phase 1 pipeline output is byte-identical."""
+        out1 = tmp_path / "out1.jsonl"
+        out2 = tmp_path / "out2.jsonl"
+
+        # Build without delegation flag twice
+        rc1 = _build.main([
+            "--project", "staam",
+            "--team-dir", str(team_with_data),
+            "--output", str(out1),
+        ])
+        rc2 = _build.main([
+            "--project", "staam",
+            "--team-dir", str(team_with_data),
+            "--output", str(out2),
+        ])
+        assert rc1 == 0
+        assert rc2 == 0
+        assert out1.read_bytes() == out2.read_bytes()
+
+    def test_delegation_missing_dir_returns_gracefully(self, team_dir, tmp_path):
+        """--delegation with nonexistent delegations dir returns 0 with empty output."""
+        out = tmp_path / "out.jsonl"
+        rc = _build.main([
+            "--project", "staam",
+            "--team-dir", str(team_dir),
+            "--delegation",
+            "--delegations-dir", str(tmp_path / "nonexistent"),
+            "--delegation-output", str(out),
+        ])
+        assert rc == 0

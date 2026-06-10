@@ -26,7 +26,10 @@ Design invariants (Phase 1A):
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 
@@ -1267,3 +1270,513 @@ def map_outbox_record(
     result.append(evidence)
 
     return result
+
+
+# ============================================================================
+# Phase 2B — Delegation Journal Projection
+# ============================================================================
+# Implements §5-§8 of docs/architecture/delegate-task-projection-phase2.md
+#
+# Reads ~/.hermes/delegations/*.jsonl and maps into unified Task, Run,
+# TaskRelation, RunRelation, and DomainEventEnvelope entities.
+#
+# Key invariants:
+#   - Deterministic IDs from (subagent_session_id, delegate_call_id, task_index)
+#   - started-only → status=running, outcome=null
+#   - terminal-only → MappingError
+#   - Byte-identical duplicates → dedup
+#   - Conflicting duplicates → MappingError
+#   - Bad JSONL lines → MappingError, continue reading
+# ============================================================================
+
+from enum import Enum as _Enum
+
+
+class DelegateRunStatus(_Enum):
+    """Terminal status values from journal run_finished records."""
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+    ERROR = "error"
+    INTERRUPTED = "interrupted"
+
+
+# Phase 2 delegate-specific RunStatus values
+_DELEGATE_RUNNING = "running"
+
+
+# ---------------------------------------------------------------------------
+# Delegation ID functions (§5.2)
+# ---------------------------------------------------------------------------
+
+def delegate_task_id(subagent_session_id: str, delegate_call_id: str, task_index: int) -> str:
+    """Deterministic delegate Task ID.
+
+    >>> delegate_task_id("s1", "toolu_abc", 0)
+    'delegate:s1:task:toolu_abc:0'
+    """
+    if not subagent_session_id or not delegate_call_id:
+        raise ValueError("subagent_session_id and delegate_call_id are required")
+    if not isinstance(task_index, int) or task_index < 0:
+        raise ValueError(f"task_index must be non-negative int, got {task_index}")
+    return f"delegate:{subagent_session_id}:task:{delegate_call_id}:{task_index}"
+
+
+def delegate_run_id(subagent_session_id: str, delegate_call_id: str, task_index: int) -> str:
+    """Deterministic delegate Run ID.
+
+    >>> delegate_run_id("s1", "toolu_abc", 0)
+    'delegate:s1:run:toolu_abc:0'
+    """
+    if not subagent_session_id or not delegate_call_id:
+        raise ValueError("subagent_session_id and delegate_call_id are required")
+    if not isinstance(task_index, int) or task_index < 0:
+        raise ValueError(f"task_index must be non-negative int, got {task_index}")
+    return f"delegate:{subagent_session_id}:run:{delegate_call_id}:{task_index}"
+
+
+def delegate_event_id(
+    subagent_session_id: str, delegate_call_id: str, task_index: int, phase: str
+) -> str:
+    """Deterministic SHA-256 event ID for delegation events (§5.2)."""
+    raw = f"delegate:{subagent_session_id}:{delegate_call_id}:{task_index}:{phase}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+# ---------------------------------------------------------------------------
+# Delegation journal record types
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DelegationStartedRecord:
+    """Parsed run_started journal record."""
+    parent_session_id: str
+    delegate_call_id: str
+    task_index: int
+    subagent_session_id: str
+    parent_delegate_task_id: Optional[str]
+    parent_delegate_run_id: Optional[str]
+    root_task_id: Optional[str]
+    depth: int
+    role: str
+    goal: str
+    toolsets: Optional[List[str]]
+    model: Optional[str]
+    started_at: str
+
+
+@dataclass
+class DelegationTerminalRecord:
+    """Parsed run_finished journal record."""
+    parent_session_id: str
+    delegate_call_id: str
+    task_index: int
+    subagent_session_id: str
+    parent_delegate_task_id: Optional[str]
+    parent_delegate_run_id: Optional[str]
+    root_task_id: Optional[str]
+    depth: int
+    status: str
+    summary: Optional[str]
+    exit_reason: str
+    api_calls: int
+    duration_seconds: float
+    tokens: Dict[str, int]
+    cost_usd: float
+    tool_trace: List[Dict[str, Any]]
+    files_written: List[str]
+    files_read: List[str]
+    error: Optional[str]
+    ended_at: str
+
+
+@dataclass
+class DelegationMappingError:
+    """Represents a mapping failure for a journal record."""
+    error: str
+    source_location: str
+    record_type: str  # "started" | "terminal" | "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Journal pairing and projection (§8.3-§8.4)
+# ---------------------------------------------------------------------------
+
+def _pair_key(record: Dict[str, Any]) -> Tuple[str, str, int]:
+    """Extract pairing key: (parent_session_id, delegate_call_id, task_index)."""
+    return (
+        str(record.get("parent_session_id", "")),
+        str(record.get("delegate_call_id", "")),
+        int(record.get("task_index", -1)),
+    )
+
+
+def _parse_started(record: Dict[str, Any], source: str) -> Any:
+    """Parse a run_started journal record."""
+    try:
+        return DelegationStartedRecord(
+            parent_session_id=str(record["parent_session_id"]),
+            delegate_call_id=str(record["delegate_call_id"]),
+            task_index=int(record["task_index"]),
+            subagent_session_id=str(record["subagent_session_id"]),
+            parent_delegate_task_id=record.get("parent_delegate_task_id"),
+            parent_delegate_run_id=record.get("parent_delegate_run_id"),
+            root_task_id=record.get("root_task_id"),
+            depth=int(record.get("depth", 1)),
+            role=str(record.get("role", "leaf")),
+            goal=str(record.get("goal", "")),
+            toolsets=record.get("toolsets"),
+            model=record.get("model"),
+            started_at=str(record.get("started_at", "")),
+        )
+    except (KeyError, ValueError, TypeError) as e:
+        return DelegationMappingError(
+            error=f"Failed to parse run_started: {e}",
+            source_location=source,
+            record_type="started",
+        )
+
+
+def _parse_terminal(record: Dict[str, Any], source: str) -> Any:
+    """Parse a run_finished journal record."""
+    try:
+        return DelegationTerminalRecord(
+            parent_session_id=str(record["parent_session_id"]),
+            delegate_call_id=str(record["delegate_call_id"]),
+            task_index=int(record["task_index"]),
+            subagent_session_id=str(record["subagent_session_id"]),
+            parent_delegate_task_id=record.get("parent_delegate_task_id"),
+            parent_delegate_run_id=record.get("parent_delegate_run_id"),
+            root_task_id=record.get("root_task_id"),
+            depth=int(record.get("depth", 1)),
+            status=str(record["status"]),
+            summary=record.get("summary"),
+            exit_reason=str(record.get("exit_reason", "")),
+            api_calls=int(record.get("api_calls", 0)),
+            duration_seconds=float(record.get("duration_seconds", 0.0)),
+            tokens=record.get("tokens", {"input": 0, "output": 0}),
+            cost_usd=float(record.get("cost_usd", 0.0)),
+            tool_trace=record.get("tool_trace", []),
+            files_written=record.get("files_written", []),
+            files_read=record.get("files_read", []),
+            error=record.get("error"),
+            ended_at=str(record.get("ended_at", "")),
+        )
+    except (KeyError, ValueError, TypeError) as e:
+        return DelegationMappingError(
+            error=f"Failed to parse run_finished: {e}",
+            source_location=source,
+            record_type="terminal",
+        )
+
+
+def _map_delegate_status(terminal_status: str) -> Tuple[str, Optional[str]]:
+    """Map journal terminal status → (RunStatus, outcome). §6.3"""
+    mapping = {
+        "completed": ("completed", "completed"),
+        "failed": ("failed", "failed"),
+        "timeout": ("failed", "timeout"),
+        "error": ("failed", "error"),
+        "interrupted": ("cancelled", "interrupted"),
+    }
+    return mapping.get(terminal_status, ("failed", "error"))
+
+
+def map_delegation_journal(
+    journal_path: str,
+) -> Tuple[
+    List[Task],
+    List[Run],
+    List[TaskRelation],
+    List[RunRelation],
+    List[Any],  # DomainEventEnvelope
+    List[DelegationMappingError],
+]:
+    """Map a single delegation journal file into unified entities.
+
+    Returns (tasks, runs, task_relations, run_relations, events, errors).
+    Implements §8.3-§8.4 pairing and exception boundary rules.
+    """
+    tasks: List[Task] = []
+    runs: List[Run] = []
+    task_relations: List[TaskRelation] = []
+    run_relations: List[RunRelation] = []
+    events: List[Any] = []
+    errors: List[DelegationMappingError] = []
+
+    # 1. Read and parse all lines
+    raw_lines: List[Tuple[int, Dict[str, _A]]] = []
+    with open(journal_path, "r", encoding="utf-8") as fh:
+        for line_no, line in enumerate(fh, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                record = json.loads(stripped)
+            except json.JSONDecodeError as e:
+                errors.append(DelegationMappingError(
+                    error=f"bad journal line: {e}",
+                    source_location=f"{journal_path}:{line_no}",
+                    record_type="unknown",
+                ))
+                continue
+            raw_lines.append((line_no, record))
+
+    # 2. Group by pairing key, deduplicate, detect conflicts
+    buckets: Dict[Tuple[str, str, int], List[Tuple[int, Dict[str, _A]]]] = {}
+    for line_no, record in raw_lines:
+        key = _pair_key(record)
+        buckets.setdefault(key, []).append((line_no, record))
+
+    for key, entries in buckets.items():
+        started_records: List[Tuple[int, Dict[str, _A]]] = []
+        terminal_records: List[Tuple[int, Dict[str, _A]]] = []
+
+        for line_no, record in entries:
+            phase = record.get("phase", "")
+            if phase == "run_started":
+                started_records.append((line_no, record))
+            elif phase == "run_finished":
+                terminal_records.append((line_no, record))
+
+        # Dedup: byte-identical duplicates
+        def _dedup(recs: List[Tuple[int, Dict[str, _A]]]) -> List[Tuple[int, Dict[str, _A]]]:
+            seen: List[str] = []
+            result: List[Tuple[int, Dict[str, _A]]] = []
+            for ln, rec in recs:
+                serialized = json.dumps(rec, sort_keys=True, ensure_ascii=False)
+                if serialized in seen:
+                    continue
+                seen.append(serialized)
+                result.append((ln, rec))
+            return result
+
+        started_records = _dedup(started_records)
+        terminal_records = _dedup(terminal_records)
+
+        # Conflict detection
+        if len(started_records) > 1:
+            errors.append(DelegationMappingError(
+                error=f"Conflicting duplicate run_started records for key {key}",
+                source_location=f"{journal_path}:{started_records[1][0]}",
+                record_type="started",
+            ))
+            continue
+        if len(terminal_records) > 1:
+            errors.append(DelegationMappingError(
+                error=f"Conflicting duplicate run_finished records for key {key}",
+                source_location=f"{journal_path}:{terminal_records[1][0]}",
+                record_type="terminal",
+            ))
+            continue
+
+        # Terminal-only → MappingError (§8.4)
+        if not started_records and terminal_records:
+            errors.append(DelegationMappingError(
+                error="terminal-only record without matching started",
+                source_location=f"{journal_path}:{terminal_records[0][0]}",
+                record_type="terminal",
+            ))
+            continue
+
+        if not started_records:
+            continue  # should not happen, but be safe
+
+        # Parse started
+        started_line_no, started_raw = started_records[0]
+        started = _parse_started(started_raw, f"{journal_path}:{started_line_no}")
+        if isinstance(started, DelegationMappingError):
+            errors.append(started)
+            continue
+
+        # Parse terminal (if present)
+        terminal: Optional[DelegationTerminalRecord] = None
+        if terminal_records:
+            term_line_no, term_raw = terminal_records[0]
+            parsed = _parse_terminal(term_raw, f"{journal_path}:{term_line_no}")
+            if isinstance(parsed, DelegationMappingError):
+                errors.append(parsed)
+                continue
+            terminal = parsed
+
+        # Build Task
+        tid = delegate_task_id(started.subagent_session_id, started.delegate_call_id, started.task_index)
+
+        task_status: TaskStatus
+        if terminal:
+            run_status, _outcome = _map_delegate_status(terminal.status)
+            if run_status == "completed":
+                task_status = "done"
+            elif run_status == "cancelled":
+                task_status = "cancelled"
+            elif run_status == "failed":
+                task_status = "failed"
+            else:
+                task_status = "failed"
+        else:
+            task_status = "running"
+
+        task = Task(
+            id=tid,
+            project_id="delegate",
+            title=(started.goal or "")[:200],
+            status=task_status,
+            created_at=started.started_at or "",
+            root_task_id=started.root_task_id or tid,
+        )
+        tasks.append(task)
+
+        # Build TaskRelation (if parent_delegate_task_id is present)
+        if started.parent_delegate_task_id:
+            tr_id = f"tr_{tid}_delegation"
+            task_relations.append(TaskRelation(
+                id=tr_id,
+                parent_task_id=started.parent_delegate_task_id,
+                child_task_id=tid,
+                relation_type="parent_child",
+                created_at=started.started_at or "",
+            ))
+
+        # Build Run
+        rid = delegate_run_id(started.subagent_session_id, started.delegate_call_id, started.task_index)
+
+        if terminal:
+            run_status, outcome = _map_delegate_status(terminal.status)
+            run = Run(
+                id=rid,
+                task_id=tid,
+                run_type="delegated",
+                executor_id="hermes-local",
+                agent_id=getattr(terminal, "model", None) or started.model or "unknown",
+                status=run_status,
+                base_path="",
+                created_at=started.started_at or "",
+                parent_run_id=started.parent_delegate_run_id,
+                outcome=outcome,
+                summary=(terminal.summary or "")[:500] if terminal.summary else None,
+                error_summary=terminal.error,
+                started_at=started.started_at or "",
+                ended_at=terminal.ended_at or "",
+            )
+        else:
+            # started-only → running (§4.3 / §8.4)
+            run = Run(
+                id=rid,
+                task_id=tid,
+                run_type="delegated",
+                executor_id="hermes-local",
+                agent_id=started.model or "unknown",
+                status=_DELEGATE_RUNNING,
+                base_path="",
+                created_at=started.started_at or "",
+                parent_run_id=started.parent_delegate_run_id,
+                outcome=None,
+                summary=None,
+                error_summary=None,
+                started_at=started.started_at or "",
+                ended_at=None,
+            )
+        runs.append(run)
+
+        # Build RunRelation (if parent_delegate_run_id is present)
+        if started.parent_delegate_run_id:
+            rr_id = f"dr_{rid}_{started.parent_delegate_run_id}"
+            run_relations.append(RunRelation(
+                id=rr_id,
+                parent_run_id=started.parent_delegate_run_id,
+                child_run_id=rid,
+                relation_type="delegated",
+                created_at=started.started_at or "",
+            ))
+
+        # Build DomainEventEnvelope for run_started
+        events.append({
+            "event_id": delegate_event_id(
+                started.subagent_session_id, started.delegate_call_id,
+                started.task_index, "started"
+            ),
+            "event_type": "delegate.run_started",
+            "event_scope": "run",
+            "source_event_id": rid,
+            "timestamp": started.started_at or "",
+            "payload": {
+                "run_id": rid,
+                "task_id": tid,
+                "status": "running",
+                "goal": started.goal or "",
+            },
+        })
+
+        # Build DomainEventEnvelope for run_finished (if terminal)
+        if terminal:
+            run_status, outcome = _map_delegate_status(terminal.status)
+            events.append({
+                "event_id": delegate_event_id(
+                    started.subagent_session_id, started.delegate_call_id,
+                    started.task_index, "finished"
+                ),
+                "event_type": "delegate.run_finished",
+                "event_scope": "run",
+                "source_event_id": rid,
+                "timestamp": terminal.ended_at or "",
+                "payload": {
+                    "run_id": rid,
+                    "task_id": tid,
+                    "status": terminal.status,
+                    "outcome": outcome,
+                    "duration_seconds": terminal.duration_seconds,
+                    "api_calls": terminal.api_calls,
+                },
+            })
+
+    return tasks, runs, task_relations, run_relations, events, errors
+
+
+def collect_delegation_journals(
+    delegations_dir: Optional[str] = None,
+) -> List[str]:
+    """Collect all delegation journal file paths.
+
+    Scans ~/.hermes/delegations/*.jsonl (or custom directory).
+    Returns sorted list of absolute paths.
+    """
+    if delegations_dir is None:
+        hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+        delegations_dir = str(Path(hermes_home) / "delegations")
+    dpath = Path(delegations_dir)
+    if not dpath.is_dir():
+        return []
+    return sorted(str(p) for p in dpath.glob("*.jsonl"))
+
+
+def map_all_delegations(
+    delegations_dir: Optional[str] = None,
+) -> Tuple[
+    List[Task],
+    List[Run],
+    List[TaskRelation],
+    List[RunRelation],
+    List[Any],  # events
+    List[DelegationMappingError],
+]:
+    """Map all delegation journals in the delegations directory.
+
+    Aggregate result from all *.jsonl files.
+    """
+    all_tasks: List[Task] = []
+    all_runs: List[Run] = []
+    all_task_relations: List[TaskRelation] = []
+    all_run_relations: List[RunRelation] = []
+    all_events: List[Any] = []
+    all_errors: List[DelegationMappingError] = []
+
+    for journal_path in collect_delegation_journals(delegations_dir):
+        tasks, runs, trs, rrs, events, errors = map_delegation_journal(journal_path)
+        all_tasks.extend(tasks)
+        all_runs.extend(runs)
+        all_task_relations.extend(trs)
+        all_run_relations.extend(rrs)
+        all_events.extend(events)
+        all_errors.extend(errors)
+
+    return all_tasks, all_runs, all_task_relations, all_run_relations, all_events, all_errors

@@ -5,6 +5,7 @@ Covers all requirements from docs/architecture/unified-task-run-contract.md §5.
 
 import hashlib
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -1403,3 +1404,273 @@ class TestLifecyclePhaseWhitelist:
         results = proj.map_ledger_record("staam", record)
         errors = [r for r in results if isinstance(r, proj.MappingError)]
         assert len(errors) == 1
+
+
+# ============================================================================
+# 11.  Phase 2B — Delegation Journal Projection Tests
+# ============================================================================
+
+VALID_STARTED = {
+    "schema_version": "delegate_v1", "phase": "run_started",
+    "parent_session_id": "uuid-S0", "delegate_call_id": "toolu_abc",
+    "task_index": 0, "subagent_session_id": "uuid-S1",
+    "parent_delegate_task_id": None, "parent_delegate_run_id": None,
+    "root_task_id": None, "depth": 1, "role": "leaf",
+    "goal": "Add unit tests", "toolsets": ["read", "write"],
+    "model": "claude-sonnet-4-6",
+    "started_at": "2026-06-10T15:00:00.000000+00:00",
+}
+
+VALID_TERMINAL = {
+    "schema_version": "delegate_v1", "phase": "run_finished",
+    "parent_session_id": "uuid-S0", "delegate_call_id": "toolu_abc",
+    "task_index": 0, "subagent_session_id": "uuid-S1",
+    "parent_delegate_task_id": None, "parent_delegate_run_id": None,
+    "root_task_id": None, "depth": 1,
+    "status": "completed", "summary": "Done", "exit_reason": "completed",
+    "api_calls": 5, "duration_seconds": 10.5,
+    "tokens": {"input": 100, "output": 50}, "cost_usd": 0.01,
+    "tool_trace": [], "files_written": [], "files_read": [],
+    "error": None, "ended_at": "2026-06-10T15:00:10.000000+00:00",
+}
+
+
+class TestDelegateTaskId:
+    def test_format(self):
+        assert proj.delegate_task_id("s1", "toolu_abc", 0) == "delegate:s1:task:toolu_abc:0"
+
+    def test_deterministic(self):
+        a = proj.delegate_task_id("s1", "toolu_abc", 0)
+        b = proj.delegate_task_id("s1", "toolu_abc", 0)
+        assert a == b
+
+    def test_different_inputs(self):
+        a = proj.delegate_task_id("s1", "toolu_a", 0)
+        b = proj.delegate_task_id("s1", "toolu_b", 0)
+        assert a != b
+
+    def test_rejects_empty_session(self):
+        with pytest.raises(ValueError):
+            proj.delegate_task_id("", "toolu_x", 0)
+
+    def test_rejects_empty_call_id(self):
+        with pytest.raises(ValueError):
+            proj.delegate_task_id("s1", "", 0)
+
+    def test_rejects_negative_index(self):
+        with pytest.raises(ValueError):
+            proj.delegate_task_id("s1", "toolu_x", -1)
+
+
+class TestDelegateRunId:
+    def test_format(self):
+        assert proj.delegate_run_id("s1", "toolu_abc", 0) == "delegate:s1:run:toolu_abc:0"
+
+    def test_deterministic(self):
+        assert proj.delegate_run_id("s1", "toolu_a", 0) == proj.delegate_run_id("s1", "toolu_a", 0)
+
+
+class TestDelegateEventId:
+    def test_format(self):
+        eid = proj.delegate_event_id("s1", "toolu_abc", 0, "started")
+        assert len(eid) == 32
+
+    def test_deterministic(self):
+        a = proj.delegate_event_id("s1", "toolu_abc", 0, "started")
+        b = proj.delegate_event_id("s1", "toolu_abc", 0, "started")
+        assert a == b
+
+    def test_different_phases(self):
+        a = proj.delegate_event_id("s1", "toolu_abc", 0, "started")
+        b = proj.delegate_event_id("s1", "toolu_abc", 0, "finished")
+        assert a != b
+
+
+class TestPairKey:
+    def test_format(self):
+        assert proj._pair_key(VALID_STARTED) == ("uuid-S0", "toolu_abc", 0)
+
+    def test_missing_fields(self):
+        assert proj._pair_key({}) == ("", "", -1)
+
+
+class TestParseStarted:
+    def test_valid(self):
+        r = proj._parse_started(dict(VALID_STARTED), "test.jsonl:1")
+        assert isinstance(r, proj.DelegationStartedRecord)
+        assert r.goal == "Add unit tests"
+
+    def test_missing_required(self):
+        r = proj._parse_started({}, "test.jsonl:1")
+        assert isinstance(r, proj.DelegationMappingError)
+
+
+class TestParseTerminal:
+    def test_valid(self):
+        r = proj._parse_terminal(dict(VALID_TERMINAL), "test.jsonl:1")
+        assert isinstance(r, proj.DelegationTerminalRecord)
+        assert r.status == "completed"
+
+    def test_missing_status(self):
+        r = proj._parse_terminal({}, "test.jsonl:1")
+        assert isinstance(r, proj.DelegationMappingError)
+
+
+class TestMapDelegateStatus:
+    def test_completed(self):
+        assert proj._map_delegate_status("completed") == ("completed", "completed")
+
+    def test_failed(self):
+        assert proj._map_delegate_status("failed") == ("failed", "failed")
+
+    def test_timeout(self):
+        assert proj._map_delegate_status("timeout") == ("failed", "timeout")
+
+    def test_error(self):
+        assert proj._map_delegate_status("error") == ("failed", "error")
+
+    def test_interrupted(self):
+        assert proj._map_delegate_status("interrupted") == ("cancelled", "interrupted")
+
+
+class TestMapDelegationJournal:
+    """Full journal pairing and projection pipeline tests (§8)."""
+
+    def test_normal_pair(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        jf.write_text(json.dumps(VALID_STARTED) + "\n" + json.dumps(VALID_TERMINAL) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(tasks) == 1
+        assert tasks[0].id == "delegate:uuid-S1:task:toolu_abc:0"
+        assert tasks[0].status == "done"
+        assert len(runs) == 1
+        assert runs[0].status == "completed"
+        assert runs[0].outcome == "completed"
+        assert len(events) == 2
+        assert len(errors) == 0
+
+    def test_started_only(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        jf.write_text(json.dumps(VALID_STARTED) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(tasks) == 1
+        assert tasks[0].status == "running"
+        assert runs[0].status == "running"
+        assert runs[0].outcome is None
+        assert len(events) == 1
+        assert len(errors) == 0
+
+    def test_terminal_only_is_error(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        jf.write_text(json.dumps(VALID_TERMINAL) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(tasks) == 0
+        assert len(errors) == 1
+        assert "terminal-only" in errors[0].error
+
+    def test_byte_identical_dedup(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        jf.write_text(
+            json.dumps(VALID_STARTED) + "\n" + json.dumps(VALID_STARTED) + "\n"
+            + json.dumps(VALID_TERMINAL) + "\n"
+        )
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(tasks) == 1
+        assert len(errors) == 0
+
+    def test_conflicting_started(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        jf.write_text(
+            json.dumps(VALID_STARTED) + "\n"
+            + json.dumps(dict(VALID_STARTED, goal="Different")) + "\n"
+        )
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(errors) >= 1
+        assert "Conflicting" in errors[0].error
+
+    def test_bad_json_line(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        jf.write_text("not json!!!\n" + json.dumps(VALID_STARTED) + "\n"
+                       + json.dumps(VALID_TERMINAL) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(tasks) == 1
+        assert len(errors) >= 1
+
+    def test_empty_file(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        jf.write_text("")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(tasks) == 0
+        assert len(errors) == 0
+
+    def test_multiple_pairs(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        s2 = dict(VALID_STARTED, delegate_call_id="tc2", subagent_session_id="s2")
+        t2 = dict(VALID_TERMINAL, delegate_call_id="tc2", subagent_session_id="s2")
+        jf.write_text(json.dumps(VALID_STARTED) + "\n" + json.dumps(VALID_TERMINAL) + "\n"
+                       + json.dumps(s2) + "\n" + json.dumps(t2) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(tasks) == 2
+        assert len(runs) == 2
+        assert len(errors) == 0
+
+    def test_with_parent_relations(self, tmp_path):
+        s = dict(VALID_STARTED, parent_delegate_task_id="delegate:S0:task:tc0:0",
+                 parent_delegate_run_id="delegate:S0:run:tc0:0",
+                 root_task_id="delegate:S0:task:tc0:0")
+        t = dict(VALID_TERMINAL, parent_delegate_task_id="delegate:S0:task:tc0:0",
+                 parent_delegate_run_id="delegate:S0:run:tc0:0",
+                 root_task_id="delegate:S0:task:tc0:0")
+        jf = tmp_path / "t.jsonl"
+        jf.write_text(json.dumps(s) + "\n" + json.dumps(t) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(trs) == 1
+        assert trs[0].parent_task_id == "delegate:S0:task:tc0:0"
+        assert len(rrs) == 1
+        assert rrs[0].parent_run_id == "delegate:S0:run:tc0:0"
+        assert rrs[0].relation_type == "delegated"
+
+    def test_without_parent_relations(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        jf.write_text(json.dumps(VALID_STARTED) + "\n" + json.dumps(VALID_TERMINAL) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert len(trs) == 0
+        assert len(rrs) == 0
+
+    def test_timeout_status(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        t = dict(VALID_TERMINAL, status="timeout")
+        jf.write_text(json.dumps(VALID_STARTED) + "\n" + json.dumps(t) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert runs[0].status == "failed"
+        assert runs[0].outcome == "timeout"
+
+    def test_interrupted_status(self, tmp_path):
+        jf = tmp_path / "t.jsonl"
+        t = dict(VALID_TERMINAL, status="interrupted")
+        jf.write_text(json.dumps(VALID_STARTED) + "\n" + json.dumps(t) + "\n")
+        tasks, runs, trs, rrs, events, errors = proj.map_delegation_journal(str(jf))
+        assert runs[0].status == "cancelled"
+
+
+class TestMapAllDelegations:
+    def test_empty_dir(self, tmp_path):
+        tasks, runs, trs, rrs, events, errors = proj.map_all_delegations(str(tmp_path))
+        assert len(tasks) == 0
+        assert len(errors) == 0
+
+    def test_multiple_files(self, tmp_path):
+        (tmp_path / "j1.jsonl").write_text(
+            json.dumps(dict(VALID_STARTED, delegate_call_id="tc1", subagent_session_id="s1")) + "\n"
+            + json.dumps(dict(VALID_TERMINAL, delegate_call_id="tc1", subagent_session_id="s1")) + "\n"
+        )
+        (tmp_path / "j2.jsonl").write_text(
+            json.dumps(dict(VALID_STARTED, delegate_call_id="tc2", subagent_session_id="s2")) + "\n"
+            + json.dumps(dict(VALID_TERMINAL, delegate_call_id="tc2", subagent_session_id="s2")) + "\n"
+        )
+        tasks, runs, trs, rrs, events, errors = proj.map_all_delegations(str(tmp_path))
+        assert len(tasks) == 2
+        assert len(errors) == 0
+
+    def test_collect_empty_dir(self):
+        assert proj.collect_delegation_journals("/nonexistent") == []

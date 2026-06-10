@@ -375,6 +375,26 @@ def build_projection(
     return unsorted
 
 
+# ---------------------------------------------------------------------------
+# Phase 2B — Delegation projection builder
+# ---------------------------------------------------------------------------
+
+def build_delegation_projection(
+    delegations_dir: Optional[str] = None,
+) -> Tuple[List[Task], List[Run], List[TaskRelation], List[RunRelation], List[Dict[str, Any]], List[Any]]:
+    """Build delegation projection from all journal files.
+
+    Returns (tasks, runs, task_relations, run_relations, events, errors).
+    Phase 1 Pipeline projection output and behaviour are unchanged.
+    """
+    return _proj.map_all_delegations(delegations_dir)
+
+
+def collect_delegation_journals(delegations_dir: Optional[str] = None) -> List[str]:
+    """Collect delegation journal files for inspection."""
+    return _proj.collect_delegation_journals(delegations_dir)
+
+
 def write_projection(records: List[Dict[str, Any]], output_path: Path) -> None:
     """Atomically write projection records to output_path as JSONL.
 
@@ -429,7 +449,48 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--output", default=None,
         help="Override output path (default: ~/.hermes/projections/task-card-pipeline/<project>/events.jsonl)"
     )
+    parser.add_argument(
+        "--delegation", action="store_true", default=False,
+        help="Build delegation projection from ~/.hermes/delegations/*.jsonl (Phase 2B)"
+    )
+    parser.add_argument(
+        "--delegations-dir", default=None,
+        help="Override delegation journal directory (default: ~/.hermes/delegations)"
+    )
+    parser.add_argument(
+        "--delegation-output", default=None,
+        help="Override delegation projection output path"
+    )
     args = parser.parse_args(argv)
+
+    # Phase 2B — delegation projection (independent pipeline)
+    if args.delegation:
+        delegations_dir = args.delegations_dir
+        if delegations_dir:
+            delegations_dir = str(Path(delegations_dir).expanduser())
+        out_path = Path(args.delegation_output).expanduser() if args.delegation_output else (
+            Path.home() / ".hermes" / "projections" / "delegate-task" / "all" / "events.jsonl"
+        )
+        tasks, runs, task_relations, run_relations, events, errors = build_delegation_projection(delegations_dir)
+        # Merge into unified projection records
+        records = []
+        for t in tasks:
+            records.append({"__type__": "Task", **dataclasses.asdict(t)})
+        for r in runs:
+            records.append({"__type__": "Run", **dataclasses.asdict(r)})
+        for tr in task_relations:
+            records.append({"__type__": "TaskRelation", **dataclasses.asdict(tr)})
+        for rr in run_relations:
+            records.append({"__type__": "RunRelation", **dataclasses.asdict(rr)})
+        for ev in events:
+            records.append({"__type__": "DomainEventEnvelope", **ev})
+        for me in errors:
+            records.append({"__type__": "MappingError", **dataclasses.asdict(me)})
+        write_projection(records, out_path)
+        print(f"Delegation projection written: {out_path}  ({len(records)} records)")
+        if errors:
+            print(f"  MappingErrors: {len(errors)}")
+        return 0
 
     project_id = args.project.strip()
     if not project_id:
