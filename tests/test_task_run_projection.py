@@ -1761,7 +1761,8 @@ class TestKanbanEventKind:
             assert result is not None, f"{kind} should be whitelisted"
 
     def test_diagnostic(self):
-        for kind in ["heartbeat", "commented", "spawned", "edited"]:
+        for kind in ["heartbeat", "commented", "spawned", "edited",
+                     "diff", "review_result", "qa_result"]:
             assert proj._kanban_is_diagnostic_kind(kind), f"{kind} should be diagnostic"
 
     def test_unknown(self):

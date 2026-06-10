@@ -1853,6 +1853,8 @@ _KANBAN_DIAGNOSTIC_KINDS = frozenset({
     "stale", "respawn_guarded", "edited", "specified", "commented",
     "attachment_removed", "heartbeat", "tip_scratch_workspace",
     "protocol_violation", "rate_limited", "reprioritized",
+    # Phase 3C — discovered in real board data (review/QA plugin events)
+    "diff", "review_result", "qa_result",
 })
 
 

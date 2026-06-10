@@ -407,7 +407,7 @@ def _discover_kanban_boards(base_dir: Optional[str] = None) -> List[Tuple[str, s
         default_db = Path.home() / ".hermes" / "kanban.db"
         if default_db.is_file():
             boards.append(("default", str(default_db)))
-        base_dir = str(Path.home() / ".hermes" / "kanban")
+        base_dir = str(Path.home() / ".hermes" / "kanban" / "boards")
     base = Path(base_dir)
     # Boards directory: each subdirectory containing kanban.db
     if base.is_dir():
