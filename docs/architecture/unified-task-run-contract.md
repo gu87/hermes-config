@@ -917,14 +917,40 @@ DomainEventEnvelope {
 3. `events.jsonl` 是 ledger 的**兼容镜像/缺失补充**：
    - 若 ledger 已存在语义相同的 `lifecycle_event`，不重复生成事件（按匹配键显式跳过）。
    - 若 ledger 缺失对应事件，才从 events.jsonl 生成 fallback DomainEventEnvelope。
-   - 生命周期匹配键：`task_id + event/phase + revision_task_id + run_id + decision + attempt`；缺失字段统一为 null，禁止按时间近似匹配。
+   - 生命周期匹配键：`effective_task_id|phase_or_kind|revision_task_id|execution_run_id|decision|attempt`；缺失字段为空字符串，禁止按时间近似匹配。
+   - **关键约束**：ledger 去重键的 `execution_run_id` 维度使用 `related_run_id`（不是 lifecycle 自身的 `run_id`），以对齐 events.jsonl 的顶级 `run_id`（见 §5.2）。
 4. `events.jsonl` 支持七种事件：`gate_checked`、`revision_created`、`revision_dispatched`、`revision_dispatch_timeout`、`revision_dispatch_skipped`、`revision_policy_blocked`、`revision_limit_reached`。未知事件返回 UnsupportedRecord。
+
+**ledger lifecycle_event 双 ID 约束：**
+
+`run_ledger.py` 的 `append_lifecycle_event()` 产出的 `lifecycle_event` 记录有两个不同含义的 ID 字段，投影器必须严格区分：
+
+| 字段 | 含义 | 示例 |
+|------|------|------|
+| `event_id` | 生命周期事件的稳定标识 | `life_staam_phase1c_..._523893` |
+| `run_id` | **生命周期事件自身的 ID**（通常与 `event_id` 相同） | `life_staam_phase1c_..._523893` |
+| `related_run_id` | **真实关联的执行 Run ID**（可能为空） | `run_staam_phase1c_..._087177` |
+
+硬性规则：
+- 统一投影的 `run_id` 必须使用 `related_run_id`，**不得**使用 lifecycle 自身的顶层 `run_id`。
+- 无 `related_run_id` 时，统一 `run_id` 必须为 `null`，`event_scope` 必须为 `task`。
+- lifecycle 自身 `run_id` 保留在 payload 的 `lifecycle_run_id` 字段中，仅用于追溯。
+
+对于 `events.jsonl`，其顶层 `run_id` 即为真实执行 Run ID（无 lifecycle ID 概念），直接作为统一 `run_id`。
+
+**Phase 1 lifecycle phase 白名单：**
+
+Phase 1 使用**明确白名单**控制支持的 lifecycle phase。未知 phase **必须**返回 `UnsupportedRecord`，**不允许**自动扩展 `pipeline.{phase}` 词汇表。
+
+白名单常量 `_SUPPORTED_LIFECYCLE_PHASES`（共 12 个 phase）：
+`compiled`, `gate_checked`, `revision_created`, `revision_dispatched`, `revision_dispatch_timeout`, `revision_dispatch_skipped`, `revision_policy_blocked`, `revision_limit_reached`, `execution_handoff_started`, `execution_handoff_finished`, `execution_policy_applied`, `opencode_result_evaluated`。
 
 **统一生命周期归一化：**
 - `ledger.jsonl` 的 `lifecycle_event` 与 `events.jsonl` 的 fallback **必须使用同一个归一化函数**，产生相同的 `task_id`、`run_id`、`event_scope`、`event_type` 和 `payload` 语义。事实源是否存在不能改变统一事件语义。
-- `revision_dispatched` 和 `revision_dispatch_timeout` 有 `revision_task_id` 时，统一归属于 Revision Task；有 `run_id` 时统一为 run scope。
+- 归一化函数接受显式 `execution_run_id` 参数：ledger 侧传入 `related_run_id`，events.jsonl 侧传入顶层 `run_id`。
+- `revision_dispatched` 和 `revision_dispatch_timeout` 有 `revision_task_id` 时，统一归属于 Revision Task；有 `execution_run_id` 时统一为 run scope。
 - 其他生命周期事件统一为原 task_id、task scope、`run_id=None`。
-- `ledger lifecycle_event` payload 必须保留原始可用字段（`revision_task_id`、`decision`、`attempt`、`run_id`、`policy_action`、`classification`、`exit_code`、`duration_seconds`、`reason`、`max_revisions`），禁止只保留 `phase/status/message`。
+- `ledger lifecycle_event` payload 必须保留原始可用字段：`phase`, `status`, `message`, `decision`, `policy_action`, `revision_task_id`, `attempt`, `classification`, `exit_code`, `duration_seconds`, `reason`, `max_revisions`, `inbox_path`, `outbox_path`, `gate_record_path`, `revision_inbox_path`。额外保留 `related_run_id`（规范执行 Run 链接）和 `lifecycle_run_id`（lifecycle 自身 ID 追溯）。
 - 禁止创建 Run、RunRelation、Task 或 TaskRelation。
 
 **事件 ID 规则：**

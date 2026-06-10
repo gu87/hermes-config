@@ -58,11 +58,17 @@ skills/**/workflows/
 !scripts/opencode-agent.py
 !scripts/task-status.py
 !scripts/verify-task.py
+!scripts/task-run-projection.py
+!scripts/task-run-projection-build.py
+!scripts/task-run-projection-acceptance.py
 
 # Tests for local collaboration harness scripts
 !tests/
 !tests/test_opencode_agent.py
 !tests/test_run_ledger_default_paths.py
+!tests/test_task_run_projection.py
+!tests/test_task_run_projection_build.py
+!tests/test_task_run_projection_acceptance.py
 
 # Configuration layer — the deployment skeleton
 !config.yaml

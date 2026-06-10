@@ -766,3 +766,193 @@ class TestEventsJsonlBuilderIntegration:
         _build.write_projection(_build.build_projection("staam", team_with_events), out1)
         _build.write_projection(_build.build_projection("staam", team_with_events), out2)
         assert out1.read_bytes() == out2.read_bytes()
+
+
+# ============================================================================
+# 14.  Builder-Level Real-Structure Dedup Integration Tests (Phase 1D)
+# ============================================================================
+# These tests exercise the full build_projection() pipeline with fixtures
+# that match real run_ledger.py output (lifecycle run_id=lifecycle ID,
+# related_run_id=execution run).  They verify that ledger + events.jsonl
+# dedup produces exactly one DomainEventEnvelope — not just that keys match.
+
+_REAL_LEDGER_GATE_CHECKED = {
+    "event": "lifecycle_event",
+    "event_id": "life_staam_t6_gate_001",
+    "run_id": "life_staam_t6_gate_001",       # lifecycle's own ID
+    "task_id": "staam_t6",
+    "phase": "gate_checked",
+    "decision": "revision_needed",
+    "started_at": "2026-03-07T15:30:00Z",
+}
+
+_REAL_EVENTS_GATE_CHECKED = {
+    "event": "gate_checked",
+    "task_id": "staam_t6",
+    "decision": "revision_needed",
+    "timestamp": "2026-03-07T15:30:00Z",
+}
+
+_REAL_LEDGER_REVISION_CREATED = {
+    "event": "lifecycle_event",
+    "event_id": "life_staam_t6_rev_created_001",
+    "run_id": "life_staam_t6_rev_created_001",  # lifecycle's own ID
+    "task_id": "staam_t6",
+    "phase": "revision_created",
+    "revision_task_id": "staam_t6_rev1",
+    "attempt": 1,
+    "started_at": "2026-03-07T15:31:00Z",
+}
+
+_REAL_EVENTS_REVISION_CREATED = {
+    "event": "revision_created",
+    "task_id": "staam_t6",
+    "revision_task_id": "staam_t6_rev1",
+    "attempt": 1,
+    "timestamp": "2026-03-07T15:31:00Z",
+}
+
+_REAL_LEDGER_REVISION_DISPATCHED = {
+    "event": "lifecycle_event",
+    "event_id": "life_staam_t6_rev_dispatched_001",
+    "run_id": "life_staam_t6_rev_dispatched_001",     # lifecycle's own ID
+    "related_run_id": "run_rev1_20260307",             # real execution run
+    "task_id": "staam_t6",
+    "revision_task_id": "staam_t6_rev1",
+    "phase": "revision_dispatched",
+    "status": "ok",
+    "started_at": "2026-03-07T15:32:00Z",
+}
+
+_REAL_EVENTS_REVISION_DISPATCHED = {
+    "event": "revision_dispatched",
+    "task_id": "staam_t6",
+    "revision_task_id": "staam_t6_rev1",
+    "run_id": "run_rev1_20260307",   # in events.jsonl, run_id IS the execution run
+    "timestamp": "2026-03-07T15:32:00Z",
+}
+
+
+@pytest.fixture
+def team_all_three_events(team_dir):
+    """Team dir with 3 real-structure ledger lifecycle events + matching
+    events.jsonl records.  Dedup should eliminate all 3 events.jsonl records."""
+    _write_jsonl(team_dir / "runs" / "ledger.jsonl", [
+        dict(_REAL_LEDGER_GATE_CHECKED),
+        dict(_REAL_LEDGER_REVISION_CREATED),
+        dict(_REAL_LEDGER_REVISION_DISPATCHED),
+    ])
+    _write_jsonl(team_dir / "events.jsonl", [
+        dict(_REAL_EVENTS_GATE_CHECKED),
+        dict(_REAL_EVENTS_REVISION_CREATED),
+        dict(_REAL_EVENTS_REVISION_DISPATCHED),
+    ])
+    return team_dir
+
+
+class TestBuilderRealStructureDedup:
+    """Integration tests that build_projection() with real-structure ledger
+    + events.jsonl fixtures produces exactly one event per lifecycle."""
+
+    def test_gate_checked_dedup_single_event(self, team_all_three_events):
+        records = _build.build_projection("staam", team_all_three_events)
+        gate_events = [
+            e for e in records
+            if e.get("projection_type") == "DomainEventEnvelope"
+            and e.get("event_type") == "pipeline.gate_checked"
+        ]
+        assert len(gate_events) == 1, (
+            f"expected exactly 1 gate_checked event after dedup, got {len(gate_events)}"
+        )
+
+    def test_revision_created_dedup_single_event(self, team_all_three_events):
+        records = _build.build_projection("staam", team_all_three_events)
+        rc_events = [
+            e for e in records
+            if e.get("projection_type") == "DomainEventEnvelope"
+            and e.get("event_type") == "pipeline.revision_created"
+        ]
+        assert len(rc_events) == 1, (
+            f"expected exactly 1 revision_created event after dedup, got {len(rc_events)}"
+        )
+
+    def test_revision_dispatched_dedup_single_event(self, team_all_three_events):
+        records = _build.build_projection("staam", team_all_three_events)
+        rd_events = [
+            e for e in records
+            if e.get("projection_type") == "DomainEventEnvelope"
+            and e.get("event_type") == "pipeline.revision_dispatched"
+        ]
+        assert len(rd_events) == 1, (
+            f"expected exactly 1 revision_dispatched event after dedup, got {len(rd_events)}"
+        )
+
+    def test_revision_dispatched_uses_related_run_id(self, team_all_three_events):
+        """The unified run_id must come from related_run_id, not lifecycle's own ID."""
+        records = _build.build_projection("staam", team_all_three_events)
+        rd_events = [
+            e for e in records
+            if e.get("projection_type") == "DomainEventEnvelope"
+            and e.get("event_type") == "pipeline.revision_dispatched"
+        ]
+        assert len(rd_events) == 1
+        ev = rd_events[0]
+        assert ev["run_id"] == "pipeline:staam:run:run_rev1_20260307", (
+            f"expected run_id from related_run_id, got {ev['run_id']}"
+        )
+        assert ev["event_scope"] == "run"
+
+    def test_lifecycle_own_id_not_execution_run(self, team_all_three_events):
+        """The lifecycle's own run_id (life_xxx) must NOT appear as a unified run_id
+        for any event that lacks a related_run_id."""
+        records = _build.build_projection("staam", team_all_three_events)
+        for r in records:
+            if r.get("projection_type") == "DomainEventEnvelope":
+                rid = r.get("run_id")
+                if rid is not None:
+                    assert "life_" not in rid, (
+                        f"lifecycle own ID leaked into unified run_id: {rid} "
+                        f"(event_type={r.get('event_type')})"
+                    )
+
+    def test_gate_checked_run_id_is_none(self, team_all_three_events):
+        """gate_checked has no related_run_id → unified run_id must be None."""
+        records = _build.build_projection("staam", team_all_three_events)
+        gate_events = [
+            e for e in records
+            if e.get("projection_type") == "DomainEventEnvelope"
+            and e.get("event_type") == "pipeline.gate_checked"
+        ]
+        assert len(gate_events) == 1
+        assert gate_events[0]["run_id"] is None
+        assert gate_events[0]["event_scope"] == "task"
+
+    def test_revision_created_run_id_is_none(self, team_all_three_events):
+        """revision_created has no related_run_id → unified run_id must be None."""
+        records = _build.build_projection("staam", team_all_three_events)
+        rc_events = [
+            e for e in records
+            if e.get("projection_type") == "DomainEventEnvelope"
+            and e.get("event_type") == "pipeline.revision_created"
+        ]
+        assert len(rc_events) == 1
+        assert rc_events[0]["run_id"] is None
+        assert rc_events[0]["event_scope"] == "task"
+
+    def test_all_domain_events_are_unique_by_type(self, team_all_three_events):
+        """After dedup, each pipeline lifecycle event_type appears at most once."""
+        records = _build.build_projection("staam", team_all_three_events)
+        event_type_counts = {}
+        for r in records:
+            if r.get("projection_type") == "DomainEventEnvelope":
+                et = r["event_type"]
+                event_type_counts[et] = event_type_counts.get(et, 0) + 1
+        lifecycle_types = [
+            "pipeline.gate_checked",
+            "pipeline.revision_created",
+            "pipeline.revision_dispatched",
+        ]
+        for et in lifecycle_types:
+            assert event_type_counts.get(et, 0) <= 1, (
+                f"{et} appears {event_type_counts.get(et, 0)} times, expected ≤1"
+            )
