@@ -28,9 +28,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 # ---------------------------------------------------------------------------
@@ -1780,3 +1781,380 @@ def map_all_delegations(
         all_errors.extend(errors)
 
     return all_tasks, all_runs, all_task_relations, all_run_relations, all_events, all_errors
+
+
+# ============================================================================
+# Phase 3B — Kanban SQLite Projection (§2-§3)
+# ============================================================================
+# Implements §2-§3 of docs/architecture/kanban-unified-task-run-phase3.md
+#
+# Reads Kanban SQLite tables (tasks, task_runs, task_events, task_links)
+# via mode=ro URI connection and maps into unified Task, Run, TaskRelation,
+# RunRelation, and DomainEventEnvelope entities.
+#
+# Key invariants:
+#   - Deterministic IDs: kanban:{board}:task/{run}/{event}:{source_id}
+#   - 17 whitelisted event kinds → DomainEventEnvelope
+#   - 15 diagnostic event kinds → UnsupportedRecord
+#   - Unknown status/outcome/kind → UnsupportedRecord
+#   - task_links → TaskRelation (parent_child | swarm)
+#   - Read-only SQLite: mode=ro, no DDL, no migration, no repair
+# ============================================================================
+
+# Kanban Task status → unified TaskStatus (§2.2)
+_KANBAN_TASK_STATUS_MAP: Dict[str, TaskStatus] = {
+    "triage": "draft",
+    "todo": "draft",
+    "scheduled": "queued",
+    "ready": "queued",
+    "running": "running",
+    "blocked": "blocked",
+    "review": "needs_review",
+    "done": "done",
+    "archived": "cancelled",
+}
+
+# Kanban Run outcome → (RunStatus, outcome) (§2.2)
+_KANBAN_OUTCOME_MAP: Dict[str, Tuple[RunStatus, Optional[str]]] = {
+    "completed": ("completed", "completed"),
+    "blocked": ("failed", "blocked"),
+    "crashed": ("failed", "crashed"),
+    "timed_out": ("failed", "timeout"),
+    "spawn_failed": ("failed", "error"),
+    "gave_up": ("failed", "gave_up"),
+    "reclaimed": ("cancelled", "reclaimed"),
+}
+
+# Phase 3 whitelisted event kinds → unified event_type (§2.3)
+_KANBAN_EVENT_KIND_MAP: Dict[str, Tuple[str, str]] = {
+    "created": ("kanban.task_created", "task"),
+    "assigned": ("kanban.task_assigned", "task"),
+    "claimed": ("kanban.run_claimed", "run"),
+    "scheduled": ("kanban.task_scheduled", "task"),
+    "promoted": ("kanban.task_promoted", "task"),
+    "promoted_manual": ("kanban.task_promoted", "task"),
+    "completed": ("kanban.run_completed", "run"),
+    "blocked": ("kanban.run_blocked", "run"),
+    "unblocked": ("kanban.run_unblocked", "run"),
+    "gave_up": ("kanban.task_gave_up", "task"),
+    "reclaimed": ("kanban.run_reclaimed", "run"),
+    "timed_out": ("kanban.run_timed_out", "run"),
+    "crashed": ("kanban.run_crashed", "run"),
+    "archived": ("kanban.task_archived", "task"),
+    "linked": ("kanban.task_linked", "task"),
+    "unlinked": ("kanban.task_unlinked", "task"),
+    "decomposed": ("kanban.task_decomposed", "task"),
+}
+
+# Diagnostic event kinds → UnsupportedRecord (§2.3)
+_KANBAN_DIAGNOSTIC_KINDS = frozenset({
+    "claim_rejected", "claim_extended", "spawned",
+    "completion_blocked_hallucination", "suspected_hallucinated_references",
+    "stale", "respawn_guarded", "edited", "specified", "commented",
+    "attachment_removed", "heartbeat", "tip_scratch_workspace",
+    "protocol_violation", "rate_limited", "reprioritized",
+})
+
+
+def kanban_task_id(board: str, task_pk: str) -> str:
+    """Deterministic Kanban Task ID.
+
+    >>> kanban_task_id("default", "t6")
+    'kanban:default:task:t6'
+    """
+    if not board or not task_pk:
+        raise ValueError("board and task_pk are required")
+    return f"kanban:{board}:task:{task_pk}"
+
+
+def kanban_run_id(board: str, run_pk: int) -> str:
+    """Deterministic Kanban Run ID.
+
+    >>> kanban_run_id("default", 42)
+    'kanban:default:run:42'
+    """
+    if not board:
+        raise ValueError("board is required")
+    if not isinstance(run_pk, int) or run_pk < 1:
+        raise ValueError(f"run_pk must be positive int, got {run_pk}")
+    return f"kanban:{board}:run:{run_pk}"
+
+
+def kanban_event_id(board: str, event_pk: int) -> str:
+    """Deterministic SHA-256 event ID for Kanban events."""
+    raw = f"kanban:{board}:event:{event_pk}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+def kanban_relation_id(child_task_id: str, relation_type: str) -> str:
+    """Deterministic TaskRelation ID."""
+    return f"tr_{child_task_id}_{relation_type}"
+
+
+def _kanban_classify_event_kind(kind: str) -> Optional[Tuple[str, str]]:
+    """Return (event_type, event_scope) for whitelisted kind, or None."""
+    return _KANBAN_EVENT_KIND_MAP.get(kind)
+
+
+def _kanban_is_diagnostic_kind(kind: str) -> bool:
+    """Check if kind is a known diagnostic/internal event."""
+    return kind in _KANBAN_DIAGNOSTIC_KINDS
+
+
+def _kanban_parse_payload(payload_text: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Parse JSON payload from task_events, returning None on failure."""
+    if not payload_text:
+        return None
+    try:
+        return json.loads(payload_text)
+    except json.JSONDecodeError:
+        return None
+
+
+def _kanban_parse_metadata(metadata_text: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Parse JSON metadata from task_runs, returning None on failure."""
+    if not metadata_text:
+        return None
+    try:
+        return json.loads(metadata_text)
+    except json.JSONDecodeError:
+        return None
+
+
+def map_kanban_db(
+    db_path: str,
+    board: str,
+) -> Tuple[
+    List[Task], List[Run], List[TaskRelation], List[RunRelation],
+    List[DomainEventEnvelope], List[ProjectionResult],
+]:
+    """Map a single Kanban SQLite database into unified entities.
+
+    Opens the database in read-only mode (mode=ro). Returns
+    (tasks, runs, task_relations, run_relations, events, errors)
+    where errors may include MappingError or UnsupportedRecord.
+    """
+    tasks_out: List[Task] = []
+    runs_out: List[Run] = []
+    task_relations: List[TaskRelation] = []
+    run_relations: List[RunRelation] = []
+    events: List[DomainEventEnvelope] = []
+    errors: List[ProjectionResult] = []
+
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error as e:
+        errors.append(MappingError(
+            error=f"Kanban DB open failed: {e}",
+            source_location=db_path,
+        ))
+        return tasks_out, runs_out, task_relations, run_relations, events, errors
+
+    try:
+        # --- tasks ---
+        task_rows = _kanban_fetch_all(conn, "SELECT * FROM tasks", db_path)
+        task_by_id: Dict[str, Dict[str, Any]] = {}
+        for row in task_rows:
+            tid = row.get("id")
+            if not tid:
+                errors.append(MappingError(
+                    error="task row missing id", source_location=db_path,
+                ))
+                continue
+            task_by_id[tid] = row
+            status_raw = row.get("status", "")
+            unified_status = _KANBAN_TASK_STATUS_MAP.get(status_raw)
+            if unified_status is None:
+                errors.append(UnsupportedRecord(
+                    reason=f"unknown kanban task status: {status_raw!r}",
+                    source_location=db_path,
+                    raw_record_summary=f"task {tid} status={status_raw}",
+                ))
+                continue
+            created_at = _kanban_ts_to_iso(row.get("created_at"))
+            task = Task(
+                id=kanban_task_id(board, tid),
+                project_id=f"kanban:{board}",
+                title=(row.get("title") or "")[:200],
+                body=row.get("body"),
+                status=unified_status,
+                created_at=created_at or "",
+                updated_at=_kanban_ts_to_iso(row.get("completed_at")) or created_at or "",
+                root_task_id=kanban_task_id(board, tid),
+            )
+            tasks_out.append(task)
+
+        # --- task_runs ---
+        run_rows = _kanban_fetch_all(conn, "SELECT * FROM task_runs", db_path)
+        for row in run_rows:
+            run_id_pk = row.get("id")
+            task_id_text = row.get("task_id")
+            if not run_id_pk or not task_id_text:
+                errors.append(MappingError(
+                    error="task_runs row missing id or task_id",
+                    source_location=db_path,
+                ))
+                continue
+            if task_id_text not in task_by_id:
+                errors.append(MappingError(
+                    error=f"task_runs {run_id_pk} references unknown task {task_id_text}",
+                    source_location=db_path,
+                ))
+                continue
+            outcome_raw = row.get("outcome")
+            if outcome_raw is None:
+                run_status: RunStatus = "running"
+                outcome: Optional[str] = None
+            else:
+                mapped = _KANBAN_OUTCOME_MAP.get(outcome_raw)
+                if mapped is None:
+                    errors.append(UnsupportedRecord(
+                        reason=f"unknown kanban run outcome: {outcome_raw!r}",
+                        source_location=db_path,
+                        raw_record_summary=f"run {run_id_pk} outcome={outcome_raw}",
+                    ))
+                    continue
+                run_status, outcome = mapped
+            metadata = _kanban_parse_metadata(row.get("metadata"))
+            summary = row.get("summary")
+            run = Run(
+                id=kanban_run_id(board, run_id_pk),
+                task_id=kanban_task_id(board, task_id_text),
+                run_type="main",
+                executor_id="hermes-local",
+                agent_id=row.get("profile") or "unknown",
+                status=run_status,
+                base_path="",
+                created_at=_kanban_ts_to_iso(row.get("started_at")) or "",
+                parent_run_id=None,
+                outcome=outcome,
+                summary=(summary or "")[:500] if summary else None,
+                error_summary=row.get("error"),
+                started_at=_kanban_ts_to_iso(row.get("started_at")) or "",
+                ended_at=_kanban_ts_to_iso(row.get("ended_at")) or "",
+            )
+            runs_out.append(run)
+
+        # --- task_links ---
+        link_rows = _kanban_fetch_all(conn, "SELECT * FROM task_links", db_path)
+        for row in link_rows:
+            parent_id = row.get("parent_id")
+            child_id = row.get("child_id")
+            if not parent_id or not child_id:
+                continue
+            if parent_id not in task_by_id or child_id not in task_by_id:
+                errors.append(MappingError(
+                    error=f"task_link ({parent_id}→{child_id}) references unknown task",
+                    source_location=db_path,
+                ))
+                continue
+            child_tid = kanban_task_id(board, child_id)
+            parent_task = task_by_id.get(parent_id, {})
+            rel_type: TaskRelationType = (
+                "swarm" if parent_task.get("workflow_template_id") else "parent_child"
+            )
+            task_relations.append(TaskRelation(
+                id=kanban_relation_id(child_tid, rel_type),
+                parent_task_id=kanban_task_id(board, parent_id),
+                child_task_id=child_tid,
+                relation_type=rel_type,
+                created_at=_kanban_ts_to_iso(parent_task.get("created_at")) or "",
+            ))
+
+        # --- task_events ---
+        event_rows = _kanban_fetch_all(
+            conn, "SELECT * FROM task_events ORDER BY id", db_path,
+        )
+        for row in event_rows:
+            event_id_pk = row.get("id")
+            task_id_text = row.get("task_id")
+            kind = row.get("kind", "")
+            if not event_id_pk or not task_id_text or not kind:
+                errors.append(MappingError(
+                    error="task_events row missing id, task_id, or kind",
+                    source_location=db_path,
+                ))
+                continue
+
+            # Classify kind
+            event_info = _kanban_classify_event_kind(kind)
+            if event_info is not None:
+                event_type, event_scope = event_info
+            elif _kanban_is_diagnostic_kind(kind):
+                errors.append(UnsupportedRecord(
+                    reason=f"kanban diagnostic event kind: {kind!r}",
+                    source_location=db_path,
+                    raw_record_summary=f"event {event_id_pk} kind={kind}",
+                ))
+                continue
+            else:
+                errors.append(UnsupportedRecord(
+                    reason=f"unknown kanban event kind: {kind!r}",
+                    source_location=db_path,
+                    raw_record_summary=f"event {event_id_pk} kind={kind}",
+                ))
+                continue
+
+            run_id_pk = row.get("run_id")
+            namespaced_run_id: Optional[str] = None
+            if run_id_pk is not None and isinstance(run_id_pk, int) and run_id_pk > 0:
+                namespaced_run_id = kanban_run_id(board, run_id_pk)
+
+            task_id_unified = kanban_task_id(board, task_id_text)
+            payload_data = _kanban_parse_payload(row.get("payload"))
+            ev = DomainEventEnvelope(
+                event_id=kanban_event_id(board, event_id_pk),
+                event_scope=event_scope,
+                event_type=event_type,
+                task_id=task_id_unified,
+                run_id=namespaced_run_id if event_scope == "run" else None,
+                source="kanban",
+                occurred_at=_kanban_ts_to_iso(row.get("created_at")) or "",
+                schema_version="kanban_v1",
+                payload=payload_data or {},
+                source_event_id=str(event_id_pk),
+                source_location=f"{db_path}:task_events:{event_id_pk}",
+            )
+            events.append(ev)
+
+    except sqlite3.Error as e:
+        errors.append(MappingError(
+            error=f"Kanban DB read error: {e}",
+            source_location=db_path,
+        ))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return tasks_out, runs_out, task_relations, run_relations, events, errors
+
+
+def _kanban_fetch_all(
+    conn: Any, query: str, db_path: str,
+) -> List[Dict[str, Any]]:
+    """Execute query and return rows as dicts. Handles missing tables gracefully."""
+    try:
+        cur = conn.execute(query)
+        rows = cur.fetchall()
+        if not rows:
+            return []
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
+    except sqlite3.OperationalError as e:
+        err = str(e).lower()
+        if "no such table" in err:
+            return []
+        raise
+
+
+def _kanban_ts_to_iso(ts: Any) -> Optional[str]:
+    """Convert Unix timestamp (int or float) to ISO-8601 string."""
+    if ts is None:
+        return None
+    try:
+        from datetime import datetime, timezone
+        return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError):
+        return None

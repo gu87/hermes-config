@@ -1674,3 +1674,284 @@ class TestMapAllDelegations:
 
     def test_collect_empty_dir(self):
         assert proj.collect_delegation_journals("/nonexistent") == []
+
+
+# ============================================================================
+# 12.  Phase 3B — Kanban SQLite Projection Tests
+# ============================================================================
+
+import sqlite3
+
+
+def _kanban_test_db(tmp_path, board="default", extra_sql=""):
+    """Create an in-memory Kanban SQLite database with test data."""
+    db_path = str(tmp_path / f"{board}.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT,
+            assignee TEXT, status TEXT NOT NULL, priority INTEGER DEFAULT 0,
+            created_by TEXT, created_at INTEGER NOT NULL, started_at INTEGER,
+            completed_at INTEGER, workspace_kind TEXT DEFAULT 'scratch',
+            workspace_path TEXT, branch_name TEXT, claim_lock TEXT,
+            session_id TEXT, workflow_template_id TEXT, current_step_key TEXT
+        );
+        CREATE TABLE IF NOT EXISTS task_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
+            profile TEXT, status TEXT NOT NULL, started_at INTEGER NOT NULL,
+            ended_at INTEGER, outcome TEXT, summary TEXT, metadata TEXT, error TEXT
+        );
+        CREATE TABLE IF NOT EXISTS task_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
+            run_id INTEGER, kind TEXT NOT NULL, payload TEXT, created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS task_links (
+            parent_id TEXT NOT NULL, child_id TEXT NOT NULL,
+            PRIMARY KEY (parent_id, child_id)
+        );
+    """)
+    if extra_sql:
+        conn.executescript(extra_sql)
+    conn.commit()
+    conn.close()
+    return db_path, board
+
+
+# --- ID Functions ---
+
+class TestKanbanId:
+    def test_task_id(self):
+        assert proj.kanban_task_id("default", "t6") == "kanban:default:task:t6"
+
+    def test_run_id(self):
+        assert proj.kanban_run_id("default", 42) == "kanban:default:run:42"
+
+    def test_event_id(self):
+        eid = proj.kanban_event_id("default", 100)
+        assert len(eid) == 32
+
+    def test_different_boards(self):
+        a = proj.kanban_task_id("default", "t1")
+        b = proj.kanban_task_id("atm10", "t1")
+        assert a != b
+
+    def test_rejects_empty(self):
+        with pytest.raises(ValueError):
+            proj.kanban_task_id("", "t1")
+
+
+# --- Status Mapping ---
+
+class TestKanbanStatusMap:
+    def test_completed(self):
+        rs, out = proj._KANBAN_OUTCOME_MAP["completed"]
+        assert rs == "completed"
+        assert out == "completed"
+
+    def test_unknown_status_is_none(self):
+        assert proj._KANBAN_TASK_STATUS_MAP.get("nonexistent") is None
+
+
+# --- Event Kind Classification ---
+
+class TestKanbanEventKind:
+    def test_whitelisted(self):
+        for kind in ["created", "completed", "crashed", "archived"]:
+            result = proj._kanban_classify_event_kind(kind)
+            assert result is not None, f"{kind} should be whitelisted"
+
+    def test_diagnostic(self):
+        for kind in ["heartbeat", "commented", "spawned", "edited"]:
+            assert proj._kanban_is_diagnostic_kind(kind), f"{kind} should be diagnostic"
+
+    def test_unknown(self):
+        assert proj._kanban_classify_event_kind("nonexistent") is None
+        assert not proj._kanban_is_diagnostic_kind("nonexistent")
+
+
+# --- map_kanban_db Integration ---
+
+BASIC_KANBAN_SQL = """
+    INSERT INTO tasks VALUES ('t1','Test task',NULL,NULL,'running',0,NULL,1000,NULL,NULL,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+    INSERT INTO task_runs VALUES (1,'t1','claude','running',1000,NULL,NULL,NULL,NULL,NULL);
+    INSERT INTO task_events VALUES (1,'t1',1,'created',NULL,1000);
+    INSERT INTO task_events VALUES (2,'t1',1,'claimed',NULL,1001);
+    INSERT INTO task_events VALUES (3,'t1',1,'completed','{"ok":true}',1002);
+"""
+
+MULTI_RUN_SQL = BASIC_KANBAN_SQL + """
+    INSERT INTO task_runs VALUES (2,'t1','claude','running',2000,2005,'crashed',NULL,NULL,'OOM');
+"""
+
+LINK_SQL = BASIC_KANBAN_SQL + """
+    INSERT INTO tasks VALUES ('t2','Child task',NULL,NULL,'running',0,NULL,1000,NULL,NULL,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+    INSERT INTO task_runs VALUES (2,'t2','claude','running',2000,NULL,NULL,NULL,NULL,NULL);
+    INSERT INTO task_links VALUES ('t1','t2');
+"""
+
+SWARM_SQL = BASIC_KANBAN_SQL + """
+    INSERT INTO tasks VALUES ('swarm_root','Swarm','root body','claude','done',0,NULL,1000,NULL,1000,'scratch',NULL,NULL,NULL,NULL,'swarm_tpl','plan');
+    INSERT INTO tasks VALUES ('worker1','Worker 1',NULL,NULL,'done',0,NULL,1001,1001,1100,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+    INSERT INTO task_runs VALUES (2,'swarm_root','claude','done',1000,1000,'completed','Done',NULL,NULL);
+    INSERT INTO task_runs VALUES (3,'worker1','claude','done',1001,1100,'completed','Done',NULL,NULL);
+    INSERT INTO task_links VALUES ('swarm_root','worker1');
+"""
+
+
+class TestMapKanbanDb:
+    def test_basic_db(self, tmp_path):
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=BASIC_KANBAN_SQL)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert len(tasks) == 1
+        assert tasks[0].id == "kanban:default:task:t1"
+        assert tasks[0].status == "running"
+        assert len(runs) == 1
+        assert runs[0].status == "running"
+        assert runs[0].outcome is None
+        assert len(events) == 3
+        assert len(errors) == 0
+
+    def test_deterministic(self, tmp_path):
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=BASIC_KANBAN_SQL)
+        r1 = proj.map_kanban_db(db_path, board)
+        r2 = proj.map_kanban_db(db_path, board)
+        assert len(r1[0]) == len(r2[0])
+
+    def test_readonly_no_modification(self, tmp_path):
+        import hashlib
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=BASIC_KANBAN_SQL)
+        before = hashlib.sha256(open(db_path, "rb").read()).hexdigest()
+        proj.map_kanban_db(db_path, board)
+        after = hashlib.sha256(open(db_path, "rb").read()).hexdigest()
+        assert before == after, "mode=ro must not modify database"
+
+    def test_empty_db(self, tmp_path):
+        db_path, board = _kanban_test_db(tmp_path)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert len(tasks) == 0
+        assert len(errors) == 0
+
+    def test_completed_run(self, tmp_path):
+        sql = """
+            INSERT INTO tasks VALUES ('t_done','Done',NULL,NULL,'done',0,NULL,1000,NULL,1100,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_runs VALUES (1,'t_done','claude','done',1000,1100,'completed','OK',NULL,NULL);
+            INSERT INTO task_events VALUES (1,'t_done',1,'completed','{}',1100);
+        """
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=sql)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert tasks[0].status == "done"
+        assert runs[0].status == "completed"
+        assert runs[0].outcome == "completed"
+
+    def test_timeout_run(self, tmp_path):
+        sql = """
+            INSERT INTO tasks VALUES ('t_to','Timeout',NULL,NULL,'running',0,NULL,1000,NULL,NULL,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_runs VALUES (1,'t_to','claude','done',1000,2000,'timed_out',NULL,NULL,'timeout');
+        """
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=sql)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert runs[0].status == "failed"
+        assert runs[0].outcome == "timeout"
+
+    def test_task_links_parent_child(self, tmp_path):
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=LINK_SQL)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert len(trs) == 1
+        assert trs[0].relation_type == "parent_child"
+
+    def test_task_links_swarm(self, tmp_path):
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=SWARM_SQL)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert any(tr.relation_type == "swarm" for tr in trs), "swarm task should have swarm relation"
+
+    def test_diagnostic_events_unsupported(self, tmp_path):
+        sql = """
+            INSERT INTO tasks VALUES ('t_hb','HB',NULL,NULL,'running',0,NULL,1000,NULL,NULL,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_runs VALUES (1,'t_hb','claude','running',1000,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_events VALUES (1,'t_hb',1,'heartbeat','{}',1000);
+        """
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=sql)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert len(events) == 0
+        assert any("heartbeat" in str(e) for e in errors if hasattr(e, "reason"))
+
+    def test_unknown_event_kind_unsupported(self, tmp_path):
+        sql = """
+            INSERT INTO tasks VALUES ('t_x','X',NULL,NULL,'running',0,NULL,1000,NULL,NULL,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_runs VALUES (1,'t_x','claude','running',1000,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_events VALUES (1,'t_x',1,'future_kind','{}',1000);
+        """
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=sql)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        unsupported = [e for e in errors if isinstance(e, proj.UnsupportedRecord)]
+        assert len(unsupported) >= 1
+
+    def test_broken_link(self, tmp_path):
+        sql = """
+            INSERT INTO tasks VALUES ('t1','Task',NULL,NULL,'running',0,NULL,1000,NULL,NULL,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_runs VALUES (1,'t1','claude','running',1000,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_links VALUES ('t1','nonexistent_child');
+        """
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=sql)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert len(trs) == 0
+        assert len(errors) >= 1
+
+    def test_missing_table(self, tmp_path):
+        conn = sqlite3.connect(str(tmp_path / "bare.db"))
+        conn.execute("CREATE TABLE tasks (id TEXT)")
+        conn.commit(); conn.close()
+        db_path = str(tmp_path / "bare.db")
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, "bare")
+        assert len(errors) == 0  # graceful: missing tables → empty results
+
+    def test_corrupt_db(self, tmp_path):
+        db_path = str(tmp_path / "corrupt.db")
+        with open(db_path, "wb") as f:
+            f.write(b"not a sqlite database")
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, "corrupt")
+        assert len(errors) >= 1
+        assert len(tasks) == 0
+
+    def test_unknown_status(self, tmp_path):
+        sql = """
+            INSERT INTO tasks VALUES ('t_bad','Bad',NULL,NULL,'future_status',0,NULL,1000,NULL,NULL,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+        """
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=sql)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        unsupported = [e for e in errors if isinstance(e, proj.UnsupportedRecord)]
+        assert len(unsupported) >= 1
+        assert len(tasks) == 0
+
+    def test_run_with_metadata(self, tmp_path):
+        sql = """
+            INSERT INTO tasks VALUES ('t_m','Meta',NULL,NULL,'done',0,NULL,1000,NULL,1100,'scratch',NULL,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_runs VALUES (1,'t_m','claude','done',1000,1100,'completed','OK','{"changed_files":["a.py"],"tests_run":5}',NULL);
+        """
+        db_path, board = _kanban_test_db(tmp_path, extra_sql=sql)
+        tasks, runs, trs, rrs, events, errors = proj.map_kanban_db(db_path, board)
+        assert len(runs) == 1
+        assert runs[0].summary == "OK"
+
+    def test_wal_mode_readonly_consistent(self, tmp_path):
+        """mode=ro reader produces same result twice (consistent within connection)."""
+        db_path = str(tmp_path / "wal.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.executescript("""
+            CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT, status TEXT, created_at INTEGER, workspace_kind TEXT DEFAULT 'scratch');
+            CREATE TABLE task_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, profile TEXT, status TEXT, started_at INTEGER, ended_at INTEGER, outcome TEXT, summary TEXT, metadata TEXT, error TEXT);
+            CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, run_id INTEGER, kind TEXT, payload TEXT, created_at INTEGER);
+            CREATE TABLE task_links (parent_id TEXT, child_id TEXT, PRIMARY KEY(parent_id, child_id));
+            INSERT INTO tasks VALUES ('t1','WAL','running',1000,'scratch');
+            INSERT INTO task_runs VALUES (1,'t1','claude','running',1000,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_events VALUES (1,'t1',1,'created','{}',1000);
+        """)
+        conn.commit(); conn.close()
+        # Two mode=ro reads produce identical results
+        tasks1, runs1, _, _, events1, _ = proj.map_kanban_db(db_path, "wal")
+        tasks2, runs2, _, _, events2, _ = proj.map_kanban_db(db_path, "wal")
+        assert len(tasks1) == len(tasks2) == 1
+        assert len(events1) == len(events2) == 1
+        # Connection-level consistency within a single call
+        assert tasks1[0].id == tasks2[0].id, "deterministic ID across calls"

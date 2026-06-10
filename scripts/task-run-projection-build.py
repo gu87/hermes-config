@@ -395,6 +395,70 @@ def collect_delegation_journals(delegations_dir: Optional[str] = None) -> List[s
     return _proj.collect_delegation_journals(delegations_dir)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3B — Kanban SQLite projection builder
+# ---------------------------------------------------------------------------
+
+def _discover_kanban_boards(base_dir: Optional[str] = None) -> List[Tuple[str, str]]:
+    """Discover Kanban boards. Returns [(board_slug, db_path), ...]."""
+    boards: List[Tuple[str, str]] = []
+    if base_dir is None:
+        # Default: check ~/.hermes/kanban.db and ~/.hermes/kanban/boards/
+        default_db = Path.home() / ".hermes" / "kanban.db"
+        if default_db.is_file():
+            boards.append(("default", str(default_db)))
+        base_dir = str(Path.home() / ".hermes" / "kanban")
+    base = Path(base_dir)
+    # Boards directory: each subdirectory containing kanban.db
+    if base.is_dir():
+        for slug_dir in sorted(base.iterdir()):
+            if not slug_dir.is_dir():
+                continue
+            db = slug_dir / "kanban.db"
+            if db.is_file():
+                boards.append((slug_dir.name, str(db)))
+    return boards
+
+
+def build_kanban_projection(
+    boards: Optional[List[Tuple[str, str]]] = None,
+    base_dir: Optional[str] = None,
+) -> Tuple[
+    List[Dict[str, Any]],  # all records aggregated
+    List[Tuple[str, str, int]],  # per-board stats: (board, status, record_count)
+]:
+    """Build Kanban projection from all discovered or specified boards.
+
+    Returns (records, stats) where records are dicts with __type__ key
+    and stats are (board, status, record_count) tuples.
+    """
+    if boards is None:
+        boards = _discover_kanban_boards(base_dir)
+    all_records: List[Dict[str, Any]] = []
+    all_stats: List[Tuple[str, str, int]] = []
+    for board, db_path in boards:
+        try:
+            tasks, runs, trs, rrs, events, errors = _proj.map_kanban_db(db_path, board)
+            for t in tasks:
+                all_records.append({"__type__": "Task", **dataclasses.asdict(t)})
+            for r in runs:
+                all_records.append({"__type__": "Run", **dataclasses.asdict(r)})
+            for tr in trs:
+                all_records.append({"__type__": "TaskRelation", **dataclasses.asdict(tr)})
+            for rr in rrs:
+                all_records.append({"__type__": "RunRelation", **dataclasses.asdict(rr)})
+            for ev in events:
+                all_records.append({"__type__": "DomainEventEnvelope", **dataclasses.asdict(ev)})
+            for me in errors:
+                err_type = "MappingError" if isinstance(me, _proj.MappingError) else "UnsupportedRecord"
+                err_dict = dataclasses.asdict(me) if dataclasses.is_dataclass(me) else {"error": str(me)}
+                all_records.append({"__type__": err_type, **err_dict})
+            all_stats.append((board, "ok", len(tasks) + len(runs) + len(trs) + len(rrs) + len(events)))
+        except Exception as e:
+            all_stats.append((board, f"error: {e}", 0))
+    return all_records, all_stats
+
+
 def write_projection(records: List[Dict[str, Any]], output_path: Path) -> None:
     """Atomically write projection records to output_path as JSONL.
 
@@ -454,6 +518,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Build delegation projection from ~/.hermes/delegations/*.jsonl (Phase 2B)"
     )
     parser.add_argument(
+        "--kanban", action="store_true", default=False,
+        help="Build Kanban projection from SQLite kanban.db (Phase 3B)"
+    )
+    parser.add_argument(
+        "--kanban-boards-dir", default=None,
+        help="Override Kanban boards directory (default: ~/.hermes/kanban)"
+    )
+    parser.add_argument(
+        "--kanban-output", default=None,
+        help="Override Kanban projection output path"
+    )
+    parser.add_argument(
         "--delegations-dir", default=None,
         help="Override delegation journal directory (default: ~/.hermes/delegations)"
     )
@@ -462,6 +538,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Override delegation projection output path"
     )
     args = parser.parse_args(argv)
+
+    # Phase 3B — Kanban projection (independent pipeline)
+    if args.kanban:
+        boards = _discover_kanban_boards(args.kanban_boards_dir)
+        out_path = Path(args.kanban_output).expanduser() if args.kanban_output else (
+            Path.home() / ".hermes" / "projections" / "kanban" / "all" / "events.jsonl"
+        )
+        records, stats = build_kanban_projection(boards)
+        if records:
+            write_projection(records, out_path)
+        total = sum(s[2] for s in stats)
+        print(f"Kanban projection written: {out_path}  ({total} records across {len(stats)} boards)")
+        for board, status, count in stats:
+            print(f"  {board}: {status} ({count} records)")
+        return 0
 
     # Phase 2B — delegation projection (independent pipeline)
     if args.delegation:

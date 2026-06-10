@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -1058,3 +1059,89 @@ class TestDelegationCLI:
             "--delegation-output", str(out),
         ])
         assert rc == 0
+
+
+# ============================================================================
+# 16.  Phase 3B — Kanban Builder CLI Wrapper Tests
+# ============================================================================
+
+def _make_kanban_db(tmp_path, board="default", extra_sql=""):
+    """Create a test Kanban SQLite database."""
+    db_path = str(tmp_path / f"{board}.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL,
+            created_at INTEGER NOT NULL, workspace_kind TEXT DEFAULT 'scratch'
+        );
+        CREATE TABLE IF NOT EXISTS task_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
+            profile TEXT, status TEXT NOT NULL, started_at INTEGER NOT NULL,
+            ended_at INTEGER, outcome TEXT, summary TEXT, metadata TEXT, error TEXT
+        );
+        CREATE TABLE IF NOT EXISTS task_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
+            run_id INTEGER, kind TEXT NOT NULL, payload TEXT, created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS task_links (
+            parent_id TEXT NOT NULL, child_id TEXT NOT NULL,
+            PRIMARY KEY (parent_id, child_id)
+        );
+    """)
+    if extra_sql:
+        conn.executescript(extra_sql)
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+BASIC_KANBAN = """
+    INSERT INTO tasks VALUES ('t1','Test','running',1000,'scratch');
+    INSERT INTO task_runs VALUES (1,'t1','claude','running',1000,NULL,NULL,NULL,NULL,NULL);
+    INSERT INTO task_events VALUES (1,'t1',1,'created',NULL,1000);
+"""
+
+
+class TestKanbanCLI:
+    def test_kanban_flag_empty(self, team_dir, tmp_path):
+        """--kanban with no boards produces empty output."""
+        out = tmp_path / "out.jsonl"
+        rc = _build.main([
+            "--project", "staam", "--team-dir", str(team_dir),
+            "--kanban", "--kanban-boards-dir", str(tmp_path / "noboards"),
+            "--kanban-output", str(out),
+        ])
+        assert rc == 0
+
+    def test_kanban_flag_with_board(self, team_dir, tmp_path):
+        """--kanban with a real board db."""
+        board_dir = tmp_path / "testboard"
+        board_dir.mkdir()
+        db_path = str(board_dir / "kanban.db")
+        conn = sqlite3.connect(db_path)
+        conn.executescript("""
+            CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT, status TEXT, created_at INTEGER, workspace_kind TEXT DEFAULT 'scratch');
+            CREATE TABLE task_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, profile TEXT, status TEXT, started_at INTEGER, ended_at INTEGER, outcome TEXT, summary TEXT, metadata TEXT, error TEXT);
+            CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, run_id INTEGER, kind TEXT, payload TEXT, created_at INTEGER);
+            CREATE TABLE task_links (parent_id TEXT, child_id TEXT, PRIMARY KEY(parent_id, child_id));
+            INSERT INTO tasks VALUES ('t1','Test','running',1000,'scratch');
+            INSERT INTO task_runs VALUES (1,'t1','claude','running',1000,NULL,NULL,NULL,NULL,NULL);
+            INSERT INTO task_events VALUES (1,'t1',1,'created','{}',1000);
+        """)
+        conn.commit(); conn.close()
+        out = tmp_path / "out.jsonl"
+        rc = _build.main([
+            "--project", "staam", "--team-dir", str(team_dir),
+            "--kanban", "--kanban-boards-dir", str(tmp_path),
+            "--kanban-output", str(out),
+        ])
+        assert rc == 0
+        assert out.exists()
+
+    def test_kanban_does_not_affect_pipeline(self, team_with_data, tmp_path):
+        """Pipeline output is unchanged when Kanban data doesn't exist."""
+        out1 = tmp_path / "out1.jsonl"
+        out2 = tmp_path / "out2.jsonl"
+        _build.main(["--project", "staam", "--team-dir", str(team_with_data), "--output", str(out1)])
+        _build.main(["--project", "staam", "--team-dir", str(team_with_data), "--output", str(out2)])
+        assert out1.read_bytes() == out2.read_bytes()
