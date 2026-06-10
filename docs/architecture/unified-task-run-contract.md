@@ -476,7 +476,7 @@ Pipeline 有两层事件记录机制：
 | `run_started` | 子进程执行开始（含 run_id, task_id, agent_id, run_type, command） |
 | `run_finished` | 子进程执行结束（含 exit_code, classification, duration_seconds, stdout_tail, stderr_tail） |
 
-**B. events.jsonl + tasks/index.jsonl（`run-task-gate.py` 的 `record_event()`，管道特有事件）：**
+**B. events.jsonl（`run-task-gate.py` 的 `record_event()`，管道特有事件）：**
 
 | event | 说明 |
 |-------|------|
@@ -487,6 +487,9 @@ Pipeline 有两层事件记录机制：
 | `revision_dispatch_skipped` | policy 不允许 auto dispatch |
 | `revision_policy_blocked` | policy 不允许 auto revision |
 | `revision_limit_reached` | 已达到 max_revisions 上限 |
+
+`tasks/index.jsonl` 同样由 `record_event()` 写入，但它是从管道事实派生的查询索引，不是权威事实源。
+Phase 1B 已审计该文件，并永久排除其读取和映射；索引缺失、损坏或内容变化不得影响 Shadow Projection。
 
 **注意**：Pipeline 的事件模型在子进程运行期间是盲区——没有流式事件（tool_call, reasoning, thinking），
 没有审批事件（approval_needed）。整个子进程运行期间管道只能看到 "started → finished" 两个边界事件。
@@ -1167,11 +1170,13 @@ Phase 1A 实现的每个映射函数必须满足：
 - outbox（`~/.claude/teams/<project>/outbox/*.json`）
 - gate record（`~/.claude/teams/<project>/review/*.json`）
 - events.jsonl（`~/.claude/teams/<project>/events.jsonl`）
-- tasks/index.jsonl（`~/.claude/teams/<project>/tasks/index.jsonl`）
 - ledger.jsonl（`~/.claude/teams/<project>/runs/ledger.jsonl`）
 
+**已审计但永久排除的派生 read model：**
+- tasks/index.jsonl（`~/.claude/teams/<project>/tasks/index.jsonl`）：不得读取或映射，其缺失、损坏或内容变化不得影响投影输出。
+
 **产出（投影输出）：**
-- 从以上原始数据生成 §4 定义的 `Task`、`TaskSpec`、`TaskRelation`、`Run`、`RunRelation`、`DomainEventEnvelope`、`Artifact`、`Evidence`、`ReviewDecision` 的统一投影。
+- 从以上权威原始数据生成 §4 定义的 `Task`、`TaskSpec`、`TaskRelation`、`Run`、`RunRelation`、`DomainEventEnvelope`、`Artifact`、`Evidence`、`ReviewDecision` 的统一投影。
 
 **硬性约束：**
 
