@@ -1202,6 +1202,20 @@ Phase 1A 实现的每个映射函数必须满足：
 
 使用一个真实 Pipeline 任务验证完整生命周期可以通过投影还原。
 
+**验收命令：**
+
+```bash
+python scripts/task-run-projection-acceptance.py \
+  --project staam \
+  --team-dir ~/.claude/teams/staam \
+  --root-task-id staam_t6 \
+  --require-complete-lifecycle
+```
+
+验收器只读取 Pipeline 原始文件，并在临时目录执行两次完整构建。它不会读取或覆盖正式投影，
+也不会修改原 Pipeline 文件。两次输出必须逐字节一致；真实数据缺少 revision 生命周期时，
+必须明确报告覆盖缺口，不得误报为完整生命周期通过。
+
 **验收场景：**
 
 ```
@@ -1232,6 +1246,8 @@ Phase 1A 实现的每个映射函数必须满足：
   │      run_id: pipeline:staam:run:{revision_source_run_id}
   │      agent: claude
   │      → 写入 revision outbox.json
+  │      → 自动 revision dispatch 可同时记录外层 revision_dispatch Run 和内层 dispatch Run；
+  │        两者都必须来自 ledger 中的真实 run_id，并归属于独立 Revision Task
   │      → 不生成 RunRelation（当前无 parent_run_id）
   │
   └─ [5] Gate approved
@@ -1248,11 +1264,11 @@ Phase 1A 实现的每个映射函数必须满足：
 | 全生命周期保留稳定 `root_task_id` | 从原始 Task Card 到 Gate approved，所有投影记录使用同一个 `root_task_id`（`pipeline:staam:task:staam_t6`） |
 | Revision Task 使用独立 `task_id` | `pipeline:staam:task:staam_t6_rev1` 是独立 Task，不是用原 task_id 覆盖 |
 | Revision Task 关联根 Task | 通过 `TaskRelation(type=revision)` 关联 `pipeline:staam:task:staam_t6` |
-| 每次 dispatch 使用独立 `run_id` | Main dispatch 和 Revision dispatch 各有独立 `run_id` |
+| 每次 dispatch 使用独立 `run_id` | Main dispatch 和 Revision dispatch 使用互不重叠的真实 ledger `run_id`；自动 revision dispatch 可包含外层 `revision_dispatch` Run 和内层 `dispatch` Run |
 | 不生成 RunRelation(revision_dispatch) | Revision dispatch run 属于独立 Revision Task；当前原始数据无 `parent_run_id`，Phase 1 不生成 RunRelation |
 | 不虚构 Review/Gate Run | [2] 和 [5] 的 Gate 执行不投影为 Run，仅投影为 ReviewDecision + DomainEventEnvelope |
 | Gate approved ≠ Task accepted | `ReviewDecision(approve)` 表示当前 Run 通过审查；Task 的最终接受需要 `TaskCommand.accept`。Phase 1 生命周期终点为"Gate approved，等待用户接受"，不投影为 accepted |
-| 每个投影事件可追溯到原始记录 | `DomainEventEnvelope.source` + `source_event_id` 指向原 Pipeline 文件的具体行/event |
+| 每个投影事件可追溯到原始记录 | ledger 事件使用 `source` + `source_event_id`；无原始 event ID 的 `events.jsonl` fallback 使用含行号的 `source_location` |
 | 不读取 Kanban、Gateway、delegate_task、Desktop 数据 | 验收的全量输入仅来自 Pipeline 文件系统 |
 | 删除投影后可以完整重建 | 删除投影输出目录 → 重新运行投影 → 逐条对比 → 完全一致 |
 
