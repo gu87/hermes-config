@@ -277,10 +277,12 @@ def _compute_agent_status(
                 diagnostics.append(FleetDiagnostic("delegate_timeout", f"recent timeout: {f.name}"))
                 break
 
-    # ── today stats ──
+    # ── today stats (filtered by this agent) ──
     today_runs = [r for r in runs
                   if r.get("projection_type") in ("Run", "DomainEventEnvelope")
-                  and r.get("status") in ("completed", "done", "running")]
+                  and r.get("status") in ("completed", "done", "running")
+                  and (r.get("agent_id") == agent_id
+                       or r.get("agent_id", "") in agent_cfg.get("aliases", []))]
     # Count unique tasks by task_id
     today_task_ids = set()
     for r in today_runs:
