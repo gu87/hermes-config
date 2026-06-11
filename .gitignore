@@ -63,6 +63,7 @@ skills/**/workflows/
 !scripts/task-run-projection-acceptance.py
 !scripts/task-run-control.py
 !scripts/task-run-control-cli.py
+!scripts/fleet-status-build.py
 
 # Tests for local collaboration harness scripts
 !tests/
@@ -72,6 +73,7 @@ skills/**/workflows/
 !tests/test_task_run_projection_build.py
 !tests/test_task_run_projection_acceptance.py
 !tests/test_task_run_control.py
+!tests/test_fleet_status.py
 
 # Configuration layer — the deployment skeleton
 !config.yaml
